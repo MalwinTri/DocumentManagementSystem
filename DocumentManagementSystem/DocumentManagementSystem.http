@@ -1,6 +1,40 @@
-@DocumentManagementSystem_HostAddress = http://localhost:5178
+@host = http://localhost:5178
+# Wenn Docker: @host = http://localhost:8080
 
-GET {{DocumentManagementSystem_HostAddress}}/weatherforecast/
+### Swagger (Ping)
+GET {{host}}/swagger
+
+### Dokument hochladen (multipart/form-data)
+POST {{host}}/api/documents
+Content-Type: multipart/form-data; boundary=BOUND
+
+--BOUND
+Content-Disposition: form-data; name="file"; filename="sample.txt"
+Content-Type: text/plain
+
+Hello World
+--BOUND
+Content-Disposition: form-data; name="title"
+
+Mein erstes Dokument
+--BOUND
+Content-Disposition: form-data; name="description"
+
+Optionale Beschreibung
+--BOUND
+Content-Disposition: form-data; name="tags"
+
+Rechnung
+--BOUND
+Content-Disposition: form-data; name="tags"
+
+2025
+--BOUND--
+
+### Dokumente auflisten (Paging)
+GET {{host}}/api/documents?page=0&size=10
 Accept: application/json
 
-###
+### Dokument per ID holen ({{id}} ersetzen)
+GET {{host}}/api/documents/{{id}}
+Accept: application/json
