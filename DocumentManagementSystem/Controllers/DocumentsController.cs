@@ -1,39 +1,35 @@
-﻿using DocumentManagementSystem.Dto;        // Form-DTO für den Upload
-using DocumentManagementSystem.Mapping;    // Mapper -> DTO
-using DocumentManagementSystem.Services;   // Fachlogik-Service
+﻿using DocumentManagementSystem.Dto;        
+using DocumentManagementSystem.Mapping;    
+using DocumentManagementSystem.Services;   
 using Microsoft.AspNetCore.Mvc;
 
 namespace DocumentManagementSystem.Controllers;
 
 [ApiController]
-[Route("api/[controller]")] // ergibt: /api/documents
+[Route("api/[controller]")] 
 public class DocumentsController : ControllerBase
 {
     private readonly DocumentService _service;
 
     public DocumentsController(DocumentService service)
     {
-        _service = service; // DI: Service wird vom Container bereitgestellt
+        _service = service; 
     }
 
     /// <summary>
-    /// Dokument hochladen (Sprint 1: nur Metadaten speichern, Dateiablage folgt später).
+    /// Dokument hochladen (Sprint 1: nur Metadaten speichern).
     /// </summary>
-    /// <remarks>
-    /// Erwartet multipart/form-data mit Feldern: file (IFormFile), title (string),
-    /// optional description (string), mehrfach tags (List&lt;string&gt;).
-    /// </remarks>
     [HttpPost]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> Upload(
-        [FromForm] DocumentUploadForm form,    // alle Form-Felder sauber in einem Modell
+        [FromForm] DocumentUploadForm form,    
         CancellationToken ct)
     {
-        // ModelState-Validierung (prüft [Required], [MaxLength] im Form-DTO)
+        // prüft [Required], [MaxLength]
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
-        // Datei wird in Sprint 2/3 gespeichert (MinIO/FS). Hier: nur Metadaten in DB.
+        // Datei wird in einen späteren Sprint bearbeitet
         var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), ct);
 
         // 201 Created + Location-Header auf GET /api/documents/{id}
@@ -45,8 +41,8 @@ public class DocumentsController : ControllerBase
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> List(
-        [FromQuery] int page = 0,              // 0-basierte Seite
-        [FromQuery] int size = 20,             // Elemente pro Seite (max. 100)
+        [FromQuery] int page = 0,              
+        [FromQuery] int size = 20,             
         CancellationToken ct = default)
     {
         // Eingabe absichern

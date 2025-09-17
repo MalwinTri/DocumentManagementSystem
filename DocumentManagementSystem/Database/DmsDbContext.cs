@@ -10,6 +10,6 @@ public class DmsDbContext(DbContextOptions<DmsDbContext> options) : DbContext(op
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
-        // Konfiguration wie vorher...
+        
     }
 }
