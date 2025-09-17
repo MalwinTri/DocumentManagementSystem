@@ -1,4 +1,4 @@
-@host = http://localhost:5178
+@host = http://localhost:8080
 # Wenn Docker: @host = http://localhost:8080
 
 ### Swagger (Ping)

@@ -21,6 +21,14 @@ services:
   api:
     build:
       context: .
+    depends_on:
+      - db
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Default: Host=db;Port=5432;Database=dms;Username=postgres;Password=postgres
+    ports:
+      - "8080:8080"
+
 
 volumes:
   dms-data:
