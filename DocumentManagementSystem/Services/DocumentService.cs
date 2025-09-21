@@ -1,6 +1,5 @@
 ﻿using DocumentManagementSystem.Domain;
 using DocumentManagementSystem.Database.Repositories;
-using Microsoft.EntityFrameworkCore;
 
 namespace DocumentManagementSystem.Services;
 
@@ -15,7 +14,6 @@ public class DocumentService
         _tagRepo = tagRepo;
     }
 
-    // Dokument erstellen
     public async Task<Document> CreateAsync(
         string title,
         string? description,
@@ -41,19 +39,6 @@ public class DocumentService
         return await _docRepo.AddAsync(doc, ct);
     }
 
-    // Dokumente auflisten (mit Paging)
-    public async Task<(IReadOnlyList<Document> Items, int Total)> ListAsync(
-        int page,
-        int size,
-        CancellationToken ct = default)
-    {
-        var q = _docRepo.Query().OrderByDescending(x => x.CreatedAt);
-        var total = await q.CountAsync(ct);
-        var items = await q.Skip(page * size).Take(size).ToListAsync(ct);
-        return (items, total);
-    }
-
-    // Einzelnes Dokument holen
     public Task<Document?> GetAsync(Guid id, CancellationToken ct = default)
         => _docRepo.GetAsync(id, ct);
 }
