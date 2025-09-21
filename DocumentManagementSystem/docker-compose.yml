@@ -1,6 +1,4 @@
-﻿version: "3.9"
-
-services:
+﻿services:
   db:
     image: postgres:16
     container_name: dms-postgres
@@ -9,7 +7,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: dms
     ports:
-      - "5432:5432" 
+      - "5432:5432"
     volumes:
       - dms-data:/var/lib/postgresql/data
     healthcheck:
@@ -21,14 +19,16 @@ services:
   api:
     build:
       context: .
-    depends_on:
-      - db
+      dockerfile: Dockerfile
+    container_name: dms-api
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
     ports:
       - "8080:8080"
-
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   dms-data:

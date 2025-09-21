@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace DocumentManagementSystem.Domain;
+namespace DocumentManagementSystem.Models;
 
 public class Tag
 {

@@ -6,8 +6,15 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
+foreach (var env in Environment.GetEnvironmentVariables().Keys)
+{
+    Console.WriteLine($"[ENV] {env} = {Environment.GetEnvironmentVariable(env.ToString())}");
+}
+
+var connectionString = builder.Configuration.GetConnectionString("Default");
+Console.WriteLine($"[DEBUG] ConnectionString: {connectionString}");
 builder.Services.AddDbContext<DmsDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+    options.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 builder.Services.AddScoped<ITagRepository, TagRepository>();

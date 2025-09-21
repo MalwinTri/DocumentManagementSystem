@@ -1,4 +1,4 @@
-﻿using DocumentManagementSystem.Domain;
+﻿using DocumentManagementSystem.Models;
 
 namespace DocumentManagementSystem.Database.Repositories;
 
