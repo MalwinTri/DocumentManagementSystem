@@ -66,8 +66,6 @@
     }
 }
 
-
-/* Recency slider look */
 input[type="range"] {
     appearance: none;
     height: 6px;
