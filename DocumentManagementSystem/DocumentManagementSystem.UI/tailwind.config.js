@@ -1,5 +1,5 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+export default {
     darkMode: ["class"],
     content: ["./index.html", "./src/**/*.{js,jsx,ts,tsx}"],
     theme: {
@@ -53,5 +53,5 @@ module.exports = {
     		}
     	}
     },
-    plugins: [require("tailwindcss-animate")],
+    plugins: [require("tailwindcss-animate"), require("@tailwindcss/line-clamp")],
 };
