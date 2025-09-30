@@ -56,22 +56,43 @@ function StatusChip({ label }) {
 }
 
 function Dropzone() {
+    const inputRef = React.useRef(null);
+    const [busy, setBusy] = React.useState(false);
+    const [msg, setMsg] = React.useState("");
+
+    async function onPickFile(e) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setBusy(true); setMsg("");
+        try {
+            await uploadDocument(file, { title: file.name });
+            setMsg("Uploaded ✔");
+            // optional: refresh list
+            // await reload();
+        } catch (e) {
+            setMsg(`Upload failed: ${e}`);
+        } finally {
+            setBusy(false);
+            if (inputRef.current) inputRef.current.value = "";
+        }
+    }
+
     return (
         <div className="flex flex-col items-center justify-center text-center border-2 border-dashed rounded-2xl py-16 px-6 bg-background">
-            <div className="rounded-2xl bg-muted w-16 h-16 flex items-center justify-center mb-4">
-                <Upload className="w-8 h-8" />
-            </div>
-            <h2 className="text-2xl font-semibold mb-2">Upload document</h2>
-            <p className="text-muted-foreground mb-6">Drag & drop files here, or click to browse</p>
+            {/* ... */}
             <div className="flex items-center gap-3">
-                <Button className="rounded-xl" type="button">
+                <input ref={inputRef} type="file" className="hidden" onChange={onPickFile} />
+                <Button className="rounded-xl" disabled={busy} onClick={() => inputRef.current?.click()}>
                     <Upload className="w-4 h-4 mr-2" />
-                    Select file
+                    {busy ? "Uploading…" : "Select file"}
                 </Button>
+                {/* ... */}
             </div>
+            {msg && <div className="mt-3 text-sm text-muted-foreground">{msg}</div>}
         </div>
     );
 }
+
 
 function ResultCard({ item, onOpen }) {
     return (
@@ -235,49 +256,51 @@ function DocumentDetailDialog({ item, open, onClose }) {
 
 
 export default function Dashboard() {
-    const [openItem, setOpenItem] = React.useState(null);
+    const [items, setItems] = React.useState([]);           // Karten
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState < string | null > (null);
 
-    const resultsData = [
-        {
-            id: "q2",
-            title: "Quarterly Report Q2",
-            date: "2025-08-14",
-            preview: "…revenue up 18% YoY… retention improved by 4.2% … OCR extracted 12…",
-            tags: ["Finance", "Q2"],
-            summary:
-                "Revenue grew 18% YoY. Key drivers include EMEA expansion and pricing updates. Risks: FX volatility.",
-            author: "Alex Kim",
-        },
-        {
-            id: "brand",
-            title: "Brand Photography Set",
-            date: "2025-07-03",
-            preview: "…SKU 2211 featured prominently… warm palette …",
-            tags: ["Marketing", "Assets"],
-            summary:
-                "High-res lifestyle images for autumn campaign. Includes product close-ups and set notes.",
-            author: "Jamie Lee",
-        },
-        {
-            id: "contract",
-            title: "Contract - Vendor Nova LLC",
-            date: "2025-09-02",
-            preview: "…governing law: AT… force majeure …",
-            tags: ["Legal"],
-            summary:
-                "12-month term, NET30, termination with 30-day notice, liability capped.",
-            author: "Priya Patel",
-        },
-        {
-            id: "legacy",
-            title: "Legacy ZIP Archive",
-            date: "2024-12-11",
-            preview: "…pending OCR jobs: 3/27…",
-            tags: ["Archive", "Legacy"],
-            summary: "Contains migrated PDFs and images. OCR pending for 3 items.",
-            author: "System",
-        },
-    ];
+    const [openItem, setOpenItem] = React.useState(null);   // Detaildialog
+
+    // beim Mount: versuchen, Liste zu laden
+    React.useEffect(() => {
+        let cancelled = false;
+
+        (async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                // Variante A: echter Paging-Endpunkt
+                const page = await listDocuments(0, 20); // wirft, wenn Endpunkt (noch) fehlt
+                if (!cancelled) setItems(page.items.map(mapToCardItem));
+            } catch (e) {
+                // Fallback: nutze deine bisherigen Demo-Daten
+                console.warn("List endpoint missing, using mock data. Error:", e);
+                if (!cancelled) setItems(mockResults.map(mapToCardItem));
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        })();
+
+        return () => { cancelled = true; };
+    }, []);
+
+    // Klick auf Karte -> optional Details frisch laden
+    async function handleOpen(itemLike) {
+        try {
+            // Falls du die ID hast und Details abweichen können:
+            if (itemLike.id) {
+                const fresh = await getDocument(itemLike.id);
+                setOpenItem(mapToCardItem(fresh));
+            } else {
+                setOpenItem(itemLike);
+            }
+        } catch (e) {
+            console.error(e);
+            // Zur Not trotzdem öffnen
+            setOpenItem(itemLike);
+        }
+    }
 
     return (
         <div className="min-h-screen bg-background text-foreground">
@@ -368,8 +391,8 @@ export default function Dashboard() {
 
                                 <TabsContent value="results" className="mt-2">
                                     <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                        {resultsData.map((it) => (
-                                            <ResultCard key={it.id} item={it} onOpen={() => setOpenItem(it)} />
+                                        {items.map(it => (
+                                            <ResultCard key={it.id ?? it.title} item={it} onOpen={() => handleOpen(it)} />
                                         ))}
                                     </div>
 
@@ -476,3 +499,23 @@ export default function Dashboard() {
         </div>
     );
 }
+
+function mapToCardItem(dto) {
+    return {
+        id: dto.id,
+        title: dto.title ?? "Untitled",
+        date: dto.createdAt?.slice(0, 10) ?? "", // yyyy-mm-dd
+        preview: dto.description ?? "—",
+        tags: dto.tags ?? [],
+        summary: dto.description ?? "—", // bis du echte Summary hast
+        author: dto.author ?? "System",
+    };
+}
+
+// Deine bisherigen Mockdaten als Fallback
+const mockResults = [
+    { id: "q2", title: "Quarterly Report Q2", date: "2025-08-14", preview: "…revenue up 18%…", tags: ["Finance", "Q2"], summary: "Revenue grew 18% YoY…", author: "Alex Kim" },
+    { id: "brand", title: "Brand Photography Set", date: "2025-07-03", preview: "…warm palette…", tags: ["Marketing", "Assets"], summary: "High-res lifestyle images…", author: "Jamie Lee" },
+    { id: "contract", title: "Contract - Vendor Nova LLC", date: "2025-09-02", preview: "…force majeure…", tags: ["Legal"], summary: "12-month term, NET30…", author: "Priya Patel" },
+    { id: "legacy", title: "Legacy ZIP Archive", date: "2024-12-11", preview: "…pending OCR jobs…", tags: ["Archive", "Legacy"], summary: "Contains migrated PDFs…", author: "System" },
+];

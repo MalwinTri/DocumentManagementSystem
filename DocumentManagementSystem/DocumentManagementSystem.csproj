@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="DocumentManagementSystem.UI\src\api\client.ts" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="FluentAssertions" Version="6.12.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">
@@ -14,6 +18,10 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.6" />
+    <PackageReference Include="Microsoft.TypeScript.MSBuild" Version="5.9.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <PackageReference Include="NSwag.MSBuild" Version="14.5.0">
       <PrivateAssets>all</PrivateAssets>
@@ -21,6 +29,10 @@
     </PackageReference>
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.4" />
     <PackageReference Include="xunit" Version="2.9.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <TypeScriptCompile Include="DocumentManagementSystem.UI\src\api\client.ts" />
   </ItemGroup>
 
 </Project>
