@@ -25,6 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { uploadDocument, listDocuments, getDocument } from "@/api/documents";
 
 function IconButton({ children, className = "", ...props }) {
     return (
@@ -258,7 +259,7 @@ function DocumentDetailDialog({ item, open, onClose }) {
 export default function Dashboard() {
     const [items, setItems] = React.useState([]);           // Karten
     const [loading, setLoading] = React.useState(true);
-    const [error, setError] = React.useState < string | null > (null);
+    const [error, setError] = React.useState(null);
 
     const [openItem, setOpenItem] = React.useState(null);   // Detaildialog
 
