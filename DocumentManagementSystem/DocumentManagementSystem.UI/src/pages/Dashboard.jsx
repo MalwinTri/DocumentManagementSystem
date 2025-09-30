@@ -56,7 +56,7 @@ function StatusChip({ label }) {
     );
 }
 
-function Dropzone() {
+function Dropzone({ onUploaded }) {
     const inputRef = React.useRef(null);
     const [busy, setBusy] = React.useState(false);
     const [msg, setMsg] = React.useState("");
@@ -66,10 +66,9 @@ function Dropzone() {
         if (!file) return;
         setBusy(true); setMsg("");
         try {
-            await uploadDocument(file, { title: file.name });
-            setMsg("Uploaded ✔");
-            // optional: refresh list
-            // await reload();
+            const saved = await uploadDocument(file, { title: file.name });
+            setMsg("Uploaded");
+            onUploaded?.(saved);
         } catch (e) {
             setMsg(`Upload failed: ${e}`);
         } finally {
@@ -257,13 +256,13 @@ function DocumentDetailDialog({ item, open, onClose }) {
 
 
 export default function Dashboard() {
-    const [items, setItems] = React.useState([]);           // Karten
+    const [items, setItems] = React.useState([]);           
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState(null);
+    const [tab, setTab] = React.useState("results");
 
-    const [openItem, setOpenItem] = React.useState(null);   // Detaildialog
+    const [openItem, setOpenItem] = React.useState(null);   
 
-    // beim Mount: versuchen, Liste zu laden
     React.useEffect(() => {
         let cancelled = false;
 
@@ -365,7 +364,7 @@ export default function Dashboard() {
 
                 {/* Main column */}
                 <section className="lg:col-span-9 space-y-6">
-                    <Tabs defaultValue="results" className="w-full">
+                    <Tabs value={tab} onValueChange={setTab} className="w-full">
                         <Card className="rounded-2xl">
                             <CardHeader className="pb-2">
                                 <TabsList className="rounded-xl">
@@ -385,7 +384,14 @@ export default function Dashboard() {
                                 <TabsContent value="upload" className="mt-2">
                                     <Card>
                                         <CardContent className="pt-6">
-                                            <Dropzone />
+                                            <Dropzone
+                                                onUploaded={async (dto) => {
+
+                                                    const card = mapToCardItem(dto);
+                                                    setItems(prev => [card, ...prev]);   
+                                                    setTab("results");                   
+                                                }}
+                                            />
                                         </CardContent>
                                     </Card>
                                 </TabsContent>
@@ -505,15 +511,14 @@ function mapToCardItem(dto) {
     return {
         id: dto.id,
         title: dto.title ?? "Untitled",
-        date: dto.createdAt?.slice(0, 10) ?? "", // yyyy-mm-dd
+        date: dto.createdAt?.slice(0, 10) ?? "", 
         preview: dto.description ?? "—",
         tags: dto.tags ?? [],
-        summary: dto.description ?? "—", // bis du echte Summary hast
+        summary: dto.description ?? "—", 
         author: dto.author ?? "System",
     };
 }
 
-// Deine bisherigen Mockdaten als Fallback
 const mockResults = [
     { id: "q2", title: "Quarterly Report Q2", date: "2025-08-14", preview: "…revenue up 18%…", tags: ["Finance", "Q2"], summary: "Revenue grew 18% YoY…", author: "Alex Kim" },
     { id: "brand", title: "Brand Photography Set", date: "2025-07-03", preview: "…warm palette…", tags: ["Marketing", "Assets"], summary: "High-res lifestyle images…", author: "Jamie Lee" },

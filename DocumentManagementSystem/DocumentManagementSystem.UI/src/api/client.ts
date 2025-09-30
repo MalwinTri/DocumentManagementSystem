@@ -9,8 +9,8 @@ type RequestOpts = {
 async function request<T>(
     method: string,
     url: string,
-    body?: any,                 // <-- body wirklich optional
-    opts: RequestOpts = {}      // <-- Default für opts
+    body?: any,                 
+    opts: RequestOpts = {}      
 ): Promise<T> {
     const headers: Record<string, string> = { ...(opts.headers || {}) };
     let fetchBody: BodyInit | undefined = body;
@@ -24,7 +24,6 @@ async function request<T>(
         method,
         headers,
         body: fetchBody,
-        credentials: "include",
     });
 
     if (!res.ok) {
@@ -38,7 +37,7 @@ async function request<T>(
 
 export const api = {
     get<T>(url: string, opts?: RequestOpts) {
-        return request<T>("GET", url, undefined, opts);     // <-- body = undefined
+        return request<T>("GET", url, undefined, opts);    
     },
     post<T>(url: string, body?: any, opts?: RequestOpts) {
         return request<T>("POST", url, body, opts);
@@ -47,6 +46,6 @@ export const api = {
         return request<T>("PUT", url, body, opts);
     },
     del<T>(url: string, opts?: RequestOpts) {
-        return request<T>("DELETE", url, undefined, opts);  // <-- body = undefined
+        return request<T>("DELETE", url, undefined, opts);  
     },
 };

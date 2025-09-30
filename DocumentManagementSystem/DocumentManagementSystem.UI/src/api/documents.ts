@@ -1,13 +1,12 @@
 ﻿import { api } from "./client";
 
-// DTOs so ähnlich wie dein Backend
 export type DocumentDto = {
   id: string;
   title: string;
   description?: string | null;
   author?: string | null;
   tags?: string[];
-  createdAt?: string; // oder date
+  createdAt?: string; 
 };
 
 export type PageDto<T> = { items: T[]; total: number; page: number; size: number };
@@ -33,6 +32,5 @@ export async function uploadDocument(file: File, meta?: { title?: string; descri
   if (meta?.title)       form.append("title", meta.title);
   if (meta?.description) form.append("description", meta.description);
   if (meta?.tags)        meta.tags.forEach(t => form.append("tags", t));
-  // Swagger sagt: POST /api/Documents
   return api.post<DocumentDto>("/api/Documents", form);
 }
