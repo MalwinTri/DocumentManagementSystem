@@ -6,19 +6,23 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-foreach (var env in Environment.GetEnvironmentVariables().Keys)
-{
-    Console.WriteLine($"[ENV] {env} = {Environment.GetEnvironmentVariable(env.ToString())}");
-}
-
 var connectionString = builder.Configuration.GetConnectionString("Default");
-Console.WriteLine($"[DEBUG] ConnectionString: {connectionString}");
-builder.Services.AddDbContext<DmsDbContext>(options =>
-    options.UseNpgsql(connectionString));
+builder.Services.AddDbContext<DmsDbContext>(opt => opt.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 builder.Services.AddScoped<ITagRepository, TagRepository>();
 builder.Services.AddScoped<DocumentService>();
+
+const string AllowFrontend = "_allowFrontend";
+builder.Services.AddCors(opts =>
+{
+    opts.AddPolicy(AllowFrontend, p => p
+        .WithOrigins("http://localhost:5173", "http://localhost:3000") 
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+    // .AllowCredentials() // nur wenn du Cookies brauchst
+    );
+});
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -47,7 +51,8 @@ if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName == "Docke
     app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "DMS v1"));
 }
 
-app.UseHttpsRedirection();
+app.UseCors(AllowFrontend);
+app.UseHttpsRedirection();                         
 app.UseAuthorization();
 app.MapControllers();
 app.Run();
