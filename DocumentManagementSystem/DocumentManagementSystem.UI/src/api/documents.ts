@@ -11,7 +11,12 @@ export type DocumentDto = {
 
 export type PageDto<T> = { items: T[]; total: number; page: number; size: number };
 
-// Falls du noch keinen „List“-Endpunkt hast, bieten wir beides an:
+// api/documents.ts
+export async function updateDocument(id: string, payload: Partial<DocumentDto>) {
+    // payload: { title?, description?, tags? }
+    return api.patch<DocumentDto>(`/api/Documents/${id}`, payload);
+}
+
 
 // Variante A: existiert ein Paging-Endpunkt (z.B. GET /api/Documents?page=0&size=10)
 export async function listDocuments(page = 0, size = 20): Promise<PageDto<DocumentDto>> {
@@ -33,4 +38,17 @@ export async function uploadDocument(file: File, meta?: { title?: string; descri
   if (meta?.description) form.append("description", meta.description);
   if (meta?.tags)        meta.tags.forEach(t => form.append("tags", t));
   return api.post<DocumentDto>("/api/Documents", form);
+}
+
+export async function deleteDocument(id: string) {
+    return api.del<void>(`/api/Documents/${id}`);
+}
+
+export async function deleteDocumentsBulk(ids: string[]) {
+    try {
+        return await api.post<void>("/api/Documents/bulk-delete", ids, undefined);
+    } catch {
+        await Promise.all(ids.map(id => deleteDocument(id).catch(() => { })));
+        return { deleted: ids.length } as any;
+    }
 }

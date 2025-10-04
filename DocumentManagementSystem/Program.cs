@@ -20,7 +20,6 @@ builder.Services.AddCors(opts =>
         .WithOrigins("http://localhost:5173", "http://localhost:3000") 
         .AllowAnyHeader()
         .AllowAnyMethod()
-    // .AllowCredentials() // nur wenn du Cookies brauchst
     );
 });
 

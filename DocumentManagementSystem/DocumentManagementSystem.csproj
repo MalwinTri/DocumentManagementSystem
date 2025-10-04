@@ -14,6 +14,12 @@
   <ItemGroup>
     <None Remove="DocumentManagementSystem.UI\src\api\client.ts" />
   </ItemGroup>
+  <ItemGroup>
+    <TypeScriptCompile Remove="DocumentManagementSystem.UI\src\components\ui\confirmDialog.tsx" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="DocumentManagementSystem.UI\src\components\ui\confirmDialog.tsx" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="FluentAssertions" Version="6.12.0" />
