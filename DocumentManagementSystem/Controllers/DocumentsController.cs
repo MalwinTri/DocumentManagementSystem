@@ -10,10 +10,12 @@ namespace DocumentManagementSystem.Controllers;
 public class DocumentsController : ControllerBase
 {
     private readonly DocumentService _service;
+    private readonly RabbitMqService _rabbitMqService; 
 
-    public DocumentsController(DocumentService service)
+    public DocumentsController(DocumentService service, RabbitMqService rabbitMqService)
     {
         _service = service;
+        _rabbitMqService = rabbitMqService; 
     }
 
     [HttpPost]
@@ -24,6 +26,7 @@ public class DocumentsController : ControllerBase
             return ValidationProblem(ModelState);
 
         var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), ct);
+        _rabbitMqService.SendOcrMessage(new { DocumentId = saved.Id, FileName = saved.Title });
         return CreatedAtAction(nameof(GetById), new { id = saved.Id }, DocumentMapper.ToDto(saved));
     }
 
