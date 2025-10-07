@@ -24,6 +24,17 @@ public class DocumentsController : ControllerBase
             return ValidationProblem(ModelState);
 
         var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), ct);
+
+        var safeTitle = string.Concat(form.Title.Where(c => char.IsLetterOrDigit(c) || c == '_'));
+        var extension = Path.GetExtension(form.File.FileName);
+        var fileName = $"{safeTitle}_{saved.Id}{extension}";
+        var filePath = Path.Combine("files", fileName);
+        Directory.CreateDirectory("files");
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await form.File.CopyToAsync(stream, ct);
+        }
+
         return CreatedAtAction(nameof(GetById), new { id = saved.Id }, DocumentMapper.ToDto(saved));
     }
 
