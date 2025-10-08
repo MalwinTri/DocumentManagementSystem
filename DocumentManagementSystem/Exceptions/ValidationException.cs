@@ -2,17 +2,22 @@
 {
     public sealed class ValidationException : AppException
     {
-        /// <summary>Optional per-field errors if you have them.</summary>
-        public IDictionary<string, string[]> Errors { get; }
+        public IReadOnlyDictionary<string, string[]> Errors { get; }
 
         public ValidationException(
             string message = "Validation failed",
             IDictionary<string, string[]>? errors = null,
-            string? code = null,
+            string? code = "validation_error",
             string? detail = null)
-            : base(message, code, detail)
+            : base(message, code: code, detail: detail)
         {
-            Errors = errors ?? new Dictionary<string, string[]>();
+            var normalized = (errors ?? new Dictionary<string, string[]>())
+                .ToDictionary(
+                    kv => kv.Key,
+                    kv => kv.Value ?? Array.Empty<string>(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            Errors = normalized;
         }
     }
 }
