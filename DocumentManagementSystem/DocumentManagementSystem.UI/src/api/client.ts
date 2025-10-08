@@ -36,16 +36,11 @@ async function request<T>(
 }
 
 export const api = {
-    get<T>(url: string, opts?: RequestOpts) {
-        return request<T>("GET", url, undefined, opts);    
-    },
-    post<T>(url: string, body?: any, opts?: RequestOpts) {
-        return request<T>("POST", url, body, opts);
-    },
-    put<T>(url: string, body?: any, opts?: RequestOpts) {
-        return request<T>("PUT", url, body, opts);
-    },
-    del<T>(url: string, opts?: RequestOpts) {
-        return request<T>("DELETE", url, undefined, opts);  
-    },
+    get<T>(url: string, opts?: RequestOpts) { return request<T>("GET", url, undefined, opts); },
+    post<T>(url: string, body?: any, opts?: RequestOpts) { return request<T>("POST", url, body, opts); },
+    put<T>(url: string, body?: any, opts?: RequestOpts) { return request<T>("PUT", url, body, opts); },
+    patch<T>(url: string, body?: any, opts?: RequestOpts) { return request<T>("PATCH", url, body, opts); }, 
+    del<T>(url: string, opts?: RequestOpts) { return request<T>("DELETE", url, undefined, opts); },
 };
+
+

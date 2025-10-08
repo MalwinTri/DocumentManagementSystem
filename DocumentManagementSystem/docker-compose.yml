@@ -7,7 +7,7 @@
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: dms
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - dms-data:/var/lib/postgresql/data
     healthcheck:
@@ -39,6 +39,18 @@
       - "3000:80"
     depends_on:
       - api
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: dms-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   dms-data:
