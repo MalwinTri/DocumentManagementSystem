@@ -17,7 +17,7 @@ public sealed class ErrorHandlingMiddleware
         {
             await _next(context);
         }
-        catch (AppException ex) // any of custom exceptions
+        catch (AppException ex)
         {
             var pd = MapToProblemDetails(context, ex, out var status);
             context.Response.ContentType = "application/problem+json";
@@ -43,7 +43,6 @@ public sealed class ErrorHandlingMiddleware
 
     private static ProblemDetails MapToProblemDetails(HttpContext ctx, AppException ex, out int status)
     {
-        // Map your six exceptions to HTTP. Keep it simple.
         (string type, string title, int http) = ex switch
         {
             ValidationException => ("https://httpstatuses.com/400", "Validation failed", StatusCodes.Status400BadRequest),
@@ -79,16 +78,6 @@ public sealed class ErrorHandlingMiddleware
             if (nfx.ResourceId is not null)
                 pd.Extensions["id"] = nfx.ResourceId;
         }
-        /*
-        if (ex is UniqueConstraintViolationException uex)
-        {
-            if (!string.IsNullOrWhiteSpace(uex.ConstraintName))
-                pd.Extensions["constraint"] = uex.ConstraintName;
-            if (uex.Value is not null)
-                pd.Extensions["value"] = uex.Value;
-        }
-
-        */
 
         return pd;
     }
