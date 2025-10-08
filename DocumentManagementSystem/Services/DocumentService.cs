@@ -13,7 +13,7 @@ public class DocumentService
     private readonly IDocumentRepository _docRepo;
     private readonly ITagRepository _tagRepo;
 
-    public DocumentService(IDocumentRepository docRepo, ITagRepository tagRepo)
+    public DocumentService(IDocumentRepository docRepo, ITagRepository tagRepo, ILogger<DocumentService> logger)
     {
         _docRepo = docRepo;
         _tagRepo = tagRepo;
