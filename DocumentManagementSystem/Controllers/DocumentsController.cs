@@ -2,6 +2,7 @@
 using DocumentManagementSystem.Mapping;
 using DocumentManagementSystem.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace DocumentManagementSystem.Controllers;
 
@@ -10,12 +11,14 @@ namespace DocumentManagementSystem.Controllers;
 public class DocumentsController : ControllerBase
 {
     private readonly DocumentService _service;
-    private readonly RabbitMqService _rabbitMqService; 
+    private readonly RabbitMqService _rabbitMqService;
+    private readonly ILogger<DocumentsController> _logger;
 
-    public DocumentsController(DocumentService service, RabbitMqService rabbitMqService)
+    public DocumentsController(DocumentService service, RabbitMqService rabbitMqService, ILogger<DocumentsController> logger)
     {
         _service = service;
-        _rabbitMqService = rabbitMqService; 
+        _rabbitMqService = rabbitMqService;
+        _logger = logger;
     }
 
     [HttpPost]
@@ -23,7 +26,12 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> Upload([FromForm] DocumentUploadForm form, CancellationToken ct)
     {
         if (!ModelState.IsValid)
+        {
+            _logger.LogWarning("Upload validation failed: {ModelState}", ModelState);
             return ValidationProblem(ModelState);
+        }
+
+        _logger.LogInformation("Upload started for Title={Title}", form.Title);
 
         var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), ct);
 
@@ -37,7 +45,17 @@ public class DocumentsController : ControllerBase
             await form.File.CopyToAsync(stream, ct);
         }
 
-        _rabbitMqService.SendOcrMessage(new { DocumentId = saved.Id, FileName = saved.Title });
+        try
+        {
+            _rabbitMqService.SendOcrMessage(new { DocumentId = saved.Id, FileName = fileName });
+            _logger.LogInformation("OCR message enqueued for DocumentId={DocumentId}", saved.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error when sending OCR message for DocumentId={DocumentId}", saved.Id);
+        }
+
+        _logger.LogInformation("Upload finished for DocumentId={DocumentId}", saved.Id);
         return CreatedAtAction(nameof(GetById), new { id = saved.Id }, DocumentMapper.ToDto(saved));
     }
 
@@ -58,7 +76,11 @@ public class DocumentsController : ControllerBase
     [HttpPost("bulk-delete")]
     public async Task<IActionResult> BulkDelete([FromBody] List<Guid> ids, CancellationToken ct)
     {
-        if (ids is null || ids.Count == 0) return BadRequest();
+        if (ids is null || ids.Count == 0)
+        {
+            _logger.LogWarning("BulkDelete called with empty or null ids");
+            return BadRequest();
+        }
         var deleted = await _service.DeleteManyAsync(ids, ct);
         return Ok(new { deleted });
     }
@@ -83,7 +105,7 @@ public class DocumentsController : ControllerBase
         return updated is null ? NotFound() : Ok(DocumentMapper.ToDto(updated));
     }
 
-    // Optional als Alias:
+    // Optional alias:
     [HttpPut("{id:guid}")]
     public Task<IActionResult> Put([FromRoute] Guid id, [FromBody] DocumentUpdateDto dto, CancellationToken ct)
         => Update(id, dto, ct);
