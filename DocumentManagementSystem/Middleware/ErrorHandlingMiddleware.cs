@@ -1,9 +1,5 @@
-﻿using System.Net;
-using System.Text.Json;
-using Microsoft.AspNetCore.Http;
+﻿using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using DocumentManagementSystem.Exceptions;
 
 namespace DocumentManagementSystem.Middleware;
@@ -34,14 +30,12 @@ public sealed class ErrorHandlingMiddleware
         {
             await _next(context);
         }
-        // häufige Spezialfälle VOR dem generischen Catch
         catch (BadHttpRequestException ex)
         {
             await WriteProblem(context, MapBadRequest(context, ex), StatusCodes.Status400BadRequest, ex);
         }
         catch (OperationCanceledException ex) when (context.RequestAborted.IsCancellationRequested)
         {
-            // 499 = Client Closed Request (nginx), ASP.NET hat keinen StatusCode-Const dafür
             await WriteProblem(context, MapClientClosed(context, ex), 499, ex);
         }
         catch (AppException ex)
@@ -67,14 +61,12 @@ public sealed class ErrorHandlingMiddleware
 
     private async Task WriteProblem(HttpContext ctx, ProblemDetails pd, int statusCode, Exception ex, bool logAsError = false)
     {
-        // Logging
         var level = logAsError || statusCode >= 500 ? LogLevel.Error :
                     statusCode >= 400 ? LogLevel.Warning : LogLevel.Information;
 
         _logger.Log(level, ex, "HTTP {Status} {Title}. Path={Path} TraceId={TraceId}",
             statusCode, pd.Title, ctx.Request.Path, ctx.TraceIdentifier);
 
-        // Wenn bereits gestartet: nichts mehr schreiben
         if (ctx.Response.HasStarted)
         {
             _logger.LogWarning("Response already started. Cannot write problem details.");
@@ -84,7 +76,6 @@ public sealed class ErrorHandlingMiddleware
         ctx.Response.StatusCode = statusCode;
         ctx.Response.ContentType = "application/problem+json";
 
-        // HEAD-Requests: keinen Body
         if (HttpMethods.IsHead(ctx.Request.Method))
             return;
 
@@ -149,7 +140,7 @@ public sealed class ErrorHandlingMiddleware
         {
             Type = "about:blank",
             Title = "Client closed request",
-            Status = 499, // custom
+            Status = 499, 
             Detail = "The request was aborted by the client.",
             Instance = ctx.Request.Path,
             Extensions = { ["traceId"] = ctx.TraceIdentifier }

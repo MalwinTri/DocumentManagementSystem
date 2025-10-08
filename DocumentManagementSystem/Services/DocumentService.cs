@@ -1,13 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using DocumentManagementSystem.Database.Repositories;
+﻿using DocumentManagementSystem.Database.Repositories;
 using DocumentManagementSystem.Exceptions;
 using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 
 namespace DocumentManagementSystem.Services;
 

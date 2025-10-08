@@ -26,7 +26,6 @@ public class TagRepository(DmsDbContext db, ILogger<TagRepository> logger) : ITa
 
         _logger.LogDebug("GetOrCreateAsync called for tag='{TagName}'", n);
 
-        // Bestehenden Tag (case-insensitive) suchen
         var existing = await _db.Tags
             .FirstOrDefaultAsync(t => EF.Functions.ILike(t.Name, n), ct);
         if (existing is not null)
@@ -44,11 +43,9 @@ public class TagRepository(DmsDbContext db, ILogger<TagRepository> logger) : ITa
             _logger.LogInformation("Created new tag '{TagName}' (Id={Id})", tag.Name, tag.Id);
             return tag;
         }
-        // Postgres: 23505 = unique_violation
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException pg &&
                                            pg.SqlState == PostgresErrorCodes.UniqueViolation)
         {
-            // Lokales Entity ablösen und erneut laden (race condition)
             _db.Entry(tag).State = EntityState.Detached;
 
             var loaded = await _db.Tags.FirstOrDefaultAsync(t => EF.Functions.ILike(t.Name, n), ct);
@@ -79,7 +76,6 @@ public class TagRepository(DmsDbContext db, ILogger<TagRepository> logger) : ITa
         var s = (input ?? string.Empty).Trim();
         if (s.Length == 0) return s;
 
-        // Mehrfache Whitespaces zu einem Space zusammenfassen
         s = Regex.Replace(s, @"\s+", " ");
 
         return s;
