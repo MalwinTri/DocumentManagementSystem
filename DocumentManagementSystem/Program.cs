@@ -1,6 +1,7 @@
 using DocumentManagementSystem.Database;
 using DocumentManagementSystem.Database.Repositories;
 using DocumentManagementSystem.Services;
+using DocumentManagementSystem.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 
@@ -45,14 +46,33 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName == "Docker")
+if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Docker"))
 {
     app.UseSwagger();
-    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "DMS v1"));
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "DMS v1");
+        c.RoutePrefix = string.Empty; // serve UI at http://host:port/
+    });
 }
 
 app.UseCors(AllowFrontend);
-app.UseHttpsRedirection();                         
+
+
+
+//  only redirect to HTTPS when NOT in Docker.
+
+
+if (!app.Environment.IsEnvironment("Docker"))
+{
+    app.UseHttpsRedirection();
+}
+
+
+
+
+app.UseMiddleware<ErrorHandlingMiddleware>();
+
 app.UseAuthorization();
 app.MapControllers();
 app.Run();
