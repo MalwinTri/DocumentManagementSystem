@@ -10,10 +10,12 @@ namespace DocumentManagementSystem.Controllers;
 public class DocumentsController : ControllerBase
 {
     private readonly DocumentService _service;
+    private readonly RabbitMqService _rabbitMqService; 
 
-    public DocumentsController(DocumentService service)
+    public DocumentsController(DocumentService service, RabbitMqService rabbitMqService)
     {
         _service = service;
+        _rabbitMqService = rabbitMqService; 
     }
 
     [HttpPost]
@@ -35,6 +37,7 @@ public class DocumentsController : ControllerBase
             await form.File.CopyToAsync(stream, ct);
         }
 
+        _rabbitMqService.SendOcrMessage(new { DocumentId = saved.Id, FileName = saved.Title });
         return CreatedAtAction(nameof(GetById), new { id = saved.Id }, DocumentMapper.ToDto(saved));
     }
 
