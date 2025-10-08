@@ -1,7 +1,6 @@
 using DocumentManagementSystem.Database;
 using DocumentManagementSystem.Database.Repositories;
 using DocumentManagementSystem.Services;
-using DocumentManagementSystem.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 
@@ -54,22 +53,7 @@ if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName == "Docke
 }
 
 app.UseCors(AllowFrontend);
-
-
-
-//  only redirect to HTTPS when NOT in Docker.
-
-
-if (!app.Environment.IsEnvironment("Docker"))
-{
-    app.UseHttpsRedirection();
-}
-
-
-
-
-app.UseMiddleware<ErrorHandlingMiddleware>();
-
+app.UseHttpsRedirection();                         
 app.UseAuthorization();
 app.MapControllers();
 app.Run();
