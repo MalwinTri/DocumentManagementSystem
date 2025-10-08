@@ -2,6 +2,10 @@
 using DocumentManagementSystem.Database.Repositories;
 using Microsoft.EntityFrameworkCore;
 
+using DocumentManagementSystem.Exceptions;
+
+
+
 namespace DocumentManagementSystem.Services;
 
 public class DocumentService
@@ -21,18 +25,36 @@ public class DocumentService
         List<string>? tags,
         CancellationToken ct = default)
     {
+
+        var errors = new Dictionary<string, string[]>();
+
+        if (string.IsNullOrWhiteSpace(title) || title.Trim().Length < 3)
+            errors["Title"] = new[] { "Title must be at least 3 characters." };
+
+        var cleanedTags = (tags ?? new List<string>())
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => t.Trim())
+            .ToList();
+
+        if (cleanedTags.Count > 10)
+            errors["Tags"] = new[] { "No more than 10 tags allowed." };
+
+        if (errors.Count > 0)
+            throw new ValidationException(errors: errors);
+
+
+
         var doc = new Document
         {
-            Title = title,
+            Title = title.Trim(),
             Description = description
         };
 
-        if (tags is { Count: > 0 })
+        if (cleanedTags.Count > 0)
         {
-            foreach (var raw in tags)
+            foreach (var tagName in cleanedTags)
             {
-                if (string.IsNullOrWhiteSpace(raw)) continue;
-                var tag = await _tagRepo.GetOrCreateAsync(raw, ct);
+                var tag = await _tagRepo.GetOrCreateAsync(tagName, ct);
                 doc.Tags.Add(tag);
             }
         }
