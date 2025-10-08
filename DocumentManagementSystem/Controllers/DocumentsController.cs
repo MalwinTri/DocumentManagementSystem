@@ -13,24 +13,41 @@ public class DocumentsController : ControllerBase
 {
     private readonly DocumentService _service;
     private readonly RabbitMqService _rabbitMqService;
+    private readonly ILogger<DocumentsController> _logger;
 
-    public DocumentsController(DocumentService service, RabbitMqService rabbitMqService)
+    public DocumentsController(
+        DocumentService service,
+        RabbitMqService rabbitMqService,
+        ILogger<DocumentsController> logger)
     {
         _service = service;
         _rabbitMqService = rabbitMqService;
+        _logger = logger;
     }
 
     [HttpPost]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> Upload([FromForm] DocumentUploadForm form, CancellationToken ct)
     {
+        // ModelState-Check inkl. Logging (aus File 2)
+        if (!ModelState.IsValid)
+        {
+            _logger.LogWarning("Upload validation failed: {ModelState}", ModelState);
+            return ValidationProblem(ModelState);
+        }
+
+        _logger.LogInformation("Upload started for Title={Title}", form.Title);
+
+        // Zusätzliche Validierung wie in File 1 (konsistent via ValidationException)
         var errors = new Dictionary<string, string[]>();
         if (form.File is null || form.File.Length == 0) errors["file"] = new[] { "File is required." };
         if (string.IsNullOrWhiteSpace(form.Title)) errors["title"] = new[] { "Title is required." };
         if (errors.Count > 0) throw new ValidationException(errors: errors);
 
+        // Metadaten speichern
         var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), ct);
 
+        // Datei persistieren
         try
         {
             var safeTitle = string.Concat(form.Title.Where(c => char.IsLetterOrDigit(c) || c == '_'));
@@ -47,9 +64,11 @@ public class DocumentsController : ControllerBase
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "File IO error for DocumentId={DocumentId}", saved.Id);
             throw new OperationFailedException("Could not persist uploaded file", code: "file_io_error", inner: ex);
         }
 
+        // OCR-Message enqueuen
         try
         {
             _rabbitMqService.SendOcrMessage(new { DocumentId = saved.Id, FileName = saved.Title });
@@ -57,9 +76,11 @@ public class DocumentsController : ControllerBase
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Unexpected error when sending OCR message for DocumentId={DocumentId}", saved.Id);
             throw new OperationFailedException("Could not enqueue OCR job", code: "enqueue_failed", inner: ex);
         }
 
+        _logger.LogInformation("Upload finished for DocumentId={DocumentId}", saved.Id);
         return CreatedAtAction(nameof(GetById), new { id = saved.Id }, DocumentMapper.ToDto(saved));
     }
 
@@ -82,6 +103,7 @@ public class DocumentsController : ControllerBase
     [HttpPost("bulk-delete")]
     public async Task<IActionResult> BulkDelete([FromBody] List<Guid> ids, CancellationToken ct)
     {
+        // Strenger wie in File 1 (ValidationException statt BadRequest)
         if (ids is null || ids.Count == 0)
             throw new ValidationException(errors: new Dictionary<string, string[]>
             {
@@ -92,7 +114,7 @@ public class DocumentsController : ControllerBase
         return Ok(new { deleted });
     }
 
-    [HttpGet]
+    [HttpGet] // GET /api/Documents?page=0&size=20
     public async Task<IActionResult> List([FromQuery] int page = 0, [FromQuery] int size = 20, CancellationToken ct = default)
     {
         var (items, total) = await _service.ListAsync(page, size, ct);
@@ -115,6 +137,7 @@ public class DocumentsController : ControllerBase
         return Ok(DocumentMapper.ToDto(updated));
     }
 
+    // Optional als Alias:
     [HttpPut("{id:guid}")]
     public Task<IActionResult> Put([FromRoute] Guid id, [FromBody] DocumentUpdateDto dto, CancellationToken ct)
         => Update(id, dto, ct);
