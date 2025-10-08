@@ -1,5 +1,6 @@
 ﻿using DocumentManagementSystem.Models;
 using DocumentManagementSystem.Database.Repositories;
+using Microsoft.EntityFrameworkCore;
 
 using DocumentManagementSystem.Exceptions;
 
@@ -58,33 +59,52 @@ public class DocumentService
             }
         }
 
-        try
-        {
-            return await _docRepo.AddAsync(doc, ct);
-        }
-
-        catch (UniqueConstraintViolationException uex)
-        {
-            // We attach the original as "inner" for server logs, but expose a safe message to clients.
-
-            throw new ConflictException(
-                message: "A document with these attributes already exists.",
-                inner: uex
-            );
-        }
-
+        return await _docRepo.AddAsync(doc, ct);
     }
 
-    public async Task<Document> GetAsync(Guid id, CancellationToken ct = default)
+    public async Task<Document?> UpdateAsync(
+     Guid id,
+     string? title,
+     string? description,
+     List<string>? tags,
+     CancellationToken ct = default)
     {
-        // Ask the repository for the entity (includes Tags).
         var doc = await _docRepo.GetAsync(id, ct);
+        if (doc is null) return null;
 
-        // If not found, we throw NotFoundException instead of returning null.
-        // Effect: Middleware turns this into a consistent HTTP 404 ProblemDetails.
-        if (doc is null)
-            throw new NotFoundException(resource: "Document", resourceId: id);
+        if (!string.IsNullOrWhiteSpace(title)) doc.Title = title;
+        if (description is not null) doc.Description = description;
 
+        if (tags is not null)
+        {
+            doc.Tags.Clear();
+            foreach (var raw in tags)
+            {
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+                var tag = await _tagRepo.GetOrCreateAsync(raw, ct);
+                doc.Tags.Add(tag);
+            }
+        }
+
+        await _docRepo.SaveChangesAsync(ct);  
         return doc;
+    }
+
+
+    public Task<Document?> GetAsync(Guid id, CancellationToken ct = default)
+        => _docRepo.GetAsync(id, ct);
+
+    public Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
+        => _docRepo.DeleteAsync(id, ct);
+
+    public Task<int> DeleteManyAsync(IEnumerable<Guid> ids, CancellationToken ct = default)
+        => _docRepo.DeleteManyAsync(ids, ct);
+
+    public async Task<(IReadOnlyList<Document> Items, int Total)> ListAsync(int page, int size, CancellationToken ct = default)
+    {
+        var query = _docRepo.Query().OrderByDescending(d => d.CreatedAt);
+        var total = await query.CountAsync(ct);
+        var items = await query.Skip(page * size).Take(size).ToListAsync(ct);
+        return (items, total);
     }
 }

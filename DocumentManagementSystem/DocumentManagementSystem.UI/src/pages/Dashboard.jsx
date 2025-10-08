@@ -1,5 +1,4 @@
-﻿// src/pages/Dashboard.jsx
-import React from "react";
+﻿import React from "react";
 import {
     Upload,
     FileText,
@@ -25,7 +24,9 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { uploadDocument, listDocuments, getDocument } from "@/api/documents";
+import { uploadDocument, listDocuments, getDocument, deleteDocumentsBulk, updateDocument } from "@/api/documents";
+import { useConfirm } from "@/components/ui/confirmDialog";
+
 
 function IconButton({ children, className = "", ...props }) {
     return (
@@ -79,58 +80,185 @@ function Dropzone({ onUploaded }) {
 
     return (
         <div className="flex flex-col items-center justify-center text-center border-2 border-dashed rounded-2xl py-16 px-6 bg-background">
-            {/* ... */}
             <div className="flex items-center gap-3">
                 <input ref={inputRef} type="file" className="hidden" onChange={onPickFile} />
                 <Button className="rounded-xl" disabled={busy} onClick={() => inputRef.current?.click()}>
                     <Upload className="w-4 h-4 mr-2" />
                     {busy ? "Uploading…" : "Select file"}
                 </Button>
-                {/* ... */}
             </div>
             {msg && <div className="mt-3 text-sm text-muted-foreground">{msg}</div>}
         </div>
     );
 }
-
-
-function ResultCard({ item, onOpen }) {
+function ResultCard({ item, onOpen, selected, onToggle }) {
     return (
-        <Card className="rounded-2xl h-full cursor-pointer" onClick={onOpen}>
-            <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-3">
-                    <CardTitle className="text-base leading-tight">{item.title}</CardTitle>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">{item.date}</span>
-                </div>
-                <p className="text-sm text-muted-foreground line-clamp-2">{item.preview}</p>
-            </CardHeader>
+        <Card
+            className={`group rounded-2xl h-full overflow-hidden ${selected ? "ring-2 ring-primary" : ""}`}
+        >
             <CardContent className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                    {item.tags.map((t) => (
-                        <Badge key={t} variant="secondary" className="rounded-xl">
-                            {t}
-                        </Badge>
-                    ))}
-                </div>
-                <div className="rounded-2xl bg-muted/50 p-3">
-                    <div className="font-medium mb-1 flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-muted">
-                            <SparklesIcon />
-                        </span>
-                        AI Summary
+                {/* Klickbarer Bereich für Details */}
+                <div
+                    className="space-y-3 cursor-pointer"
+                    onClick={() => onOpen?.(item)} // nur dieser Teil öffnet Details
+                >
+                    {/* Titel + Datum */}
+                    <div className="flex justify-between items-start">
+                        <div className="font-medium text-base truncate">{item.title}</div>
+                        <span className="text-xs text-muted-foreground">{item.date}</span>
                     </div>
-                    <p className="text-sm text-muted-foreground line-clamp-3">{item.summary}</p>
-                </div>
-                <div className="flex items-end justify-between">
+
+                    {/* Preview */}
+                    <p className="text-sm text-muted-foreground truncate">{item.preview}</p>
+
+                    {/* Tags */}
                     <div className="flex flex-wrap gap-2">
-                        <Badge className="rounded-xl bg-emerald-100 text-emerald-800 hover:bg-emerald-100">OCR</Badge>
-                        <Badge className="rounded-xl bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Indexed</Badge>
-                        <Badge className="rounded-xl bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Summarized</Badge>
+                        {(item.tags ?? []).length
+                            ? item.tags.map((t) => (
+                                <Badge key={t} variant="secondary" className="rounded-xl">
+                                    {t}
+                                </Badge>
+                            ))
+                            : <span className="text-xs text-muted-foreground">No tags</span>}
                     </div>
+
+                    {/* Summary */}
+                    <div className="rounded-xl bg-muted/50 p-2 text-sm">
+                        <div className="flex items-center gap-1 mb-1">
+                            <SparklesIcon />
+                            <span className="font-medium">AI Summary</span>
+                        </div>
+                        <p className="line-clamp-2">{item.summary}</p>
+                    </div>
+                </div>
+
+                {/* Footer → NICHT klickbar */}
+                <div className="flex items-center justify-between pt-2">
+                    <label
+                        className={`flex items-center gap-2 text-sm text-muted-foreground cursor-pointer transition-opacity
+                        ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                        onClick={(e) => e.stopPropagation()} 
+                    >
+                        <input
+                            type="checkbox"
+                            checked={!!selected}
+                            onChange={onToggle}
+                        />
+                        Select
+                    </label>
+
                     <span className="text-xs text-muted-foreground">By {item.author}</span>
                 </div>
             </CardContent>
         </Card>
+    );
+}
+
+function RightDetailPanel({ item, onClose, onDelete, onSave }) {
+    if (!item) return null;
+
+    const [title, setTitle] = React.useState(item.title ?? "");
+    const [summary, setSummary] = React.useState(item.summary ?? "");
+    const [tagsStr, setTagsStr] = React.useState((item.tags ?? []).join(", "));
+    const [saving, setSaving] = React.useState(false);
+
+    // wenn ein anderes Item geöffnet wird: Felder neu befüllen
+    React.useEffect(() => {
+        setTitle(item.title ?? "");
+        setSummary(item.summary ?? "");
+        setTagsStr((item.tags ?? []).join(", "));
+    }, [item]);
+
+    const formPayload = React.useMemo(() => ({
+        title,
+        description: summary, // UI "Summary" = Backend "Description"
+        tags: tagsStr.split(",").map(s => s.trim()).filter(Boolean),
+    }), [title, summary, tagsStr]);
+
+    async function handleSave() {
+        try {
+            setSaving(true);
+            await onSave?.(formPayload);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 z-50">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+            <aside
+                className="absolute right-0 top-0 h-full w-full sm:w-[440px] md:w-[520px] bg-background border-l shadow-2xl flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+            >
+                <div className="flex items-center justify-between px-4 py-3 border-b">
+                    <div className="font-semibold truncate">{item.title}</div>
+                    <button className="rounded-xl p-2 hover:bg-muted" onClick={onClose} type="button" aria-label="Close">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <div className="p-4 overflow-auto space-y-5">
+                    {/* Summary */}
+                    <div className="rounded-2xl border p-4 space-y-3">
+                        <div className="font-medium">Summary</div>
+                        <textarea
+                            value={summary}
+                            onChange={(e) => setSummary(e.target.value)}
+                            className="w-full h-36 resize-none rounded-xl border bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                        <div className="text-right">
+                            <Button size="sm" className="rounded-xl" type="button" onClick={handleSave} disabled={saving}>
+                                {saving ? "Saving…" : "Save summary"}
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* Metadata */}
+                    <div className="rounded-2xl border p-4 space-y-3">
+                        <div className="font-medium">Metadata</div>
+                        <div className="space-y-3">
+                            <div>
+                                <Label className="text-sm">Title</Label>
+                                <Input value={title} onChange={(e) => setTitle(e.target.value)} className="rounded-xl" />
+                            </div>
+                            {/* Author ist aktuell nicht in deinem Backend-Modell – Feld lassen oder entfernen */}
+                            <div>
+                                <Label className="text-sm">Tags</Label>
+                                <Input value={tagsStr} onChange={(e) => setTagsStr(e.target.value)} className="rounded-xl" />
+                            </div>
+                        </div>
+                        <div className="flex gap-2 pt-2">
+                            <Button variant="destructive" className="rounded-xl gap-2" type="button" onClick={() => onDelete?.(item)}>
+                                <Trash2 className="w-4 h-4" />
+                                Delete
+                            </Button>
+                            <Button className="rounded-xl" type="button" onClick={handleSave} disabled={saving}>
+                                {saving ? "Saving…" : "Save"}
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* Activity */}
+                    <div className="rounded-2xl border p-4">
+                        <div className="font-medium mb-2">Activity</div>
+                        <ul className="text-sm space-y-2">
+                            <li className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Uploaded on {item.date || "—"}
+                            </li>
+                            <li className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Indexed in ElasticSearch
+                            </li>
+                            <li className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Summary generated
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </aside>
+        </div>
     );
 }
 
@@ -152,7 +280,7 @@ function SparklesIcon() {
     );
 }
 
-function DocumentDetailDialog({ item, open, onClose }) {
+function DocumentDetailDialog({ item, open, onClose, onDelete, onSave }) {
     if (!open || !item) return null;
 
     React.useEffect(() => {
@@ -163,90 +291,59 @@ function DocumentDetailDialog({ item, open, onClose }) {
 
     return (
         <div className="fixed inset-0 z-50">
+            {/* Backdrop */}
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+
+            {/* Dialog */}
             <div className="absolute inset-0 flex items-start justify-center p-4 sm:p-6">
-                <div className="w-full max-w-5xl rounded-2xl bg-background text-foreground shadow-2xl border overflow-hidden">
+                <div
+                    className="w-full max-w-5xl rounded-2xl bg-background text-foreground shadow-2xl border overflow-hidden"
+                    onClick={(e) => e.stopPropagation()}    // << verhindert Backdrop-Schließen bei Button-Klicks
+                    role="dialog"
+                    aria-modal="true"
+                >
                     {/* Title bar */}
                     <div className="flex items-center justify-between px-6 py-4 border-b">
                         <div className="text-lg font-semibold truncate">{item.title}</div>
-                        <button onClick={onClose} className="rounded-xl p-2 hover:bg-muted" aria-label="Close">
+                        <button type="button" onClick={onClose} className="rounded-xl p-2 hover:bg-muted" aria-label="Close">
                             <X className="w-5 h-5" />
                         </button>
                     </div>
 
+                    {/* Inhalt wie gehabt … Buttons mit type="button" */}
+                    {/* Summary, Metadata … */}
                     <div className="grid lg:grid-cols-2 gap-6 p-6">
                         {/* Summary */}
                         <div className="rounded-2xl border p-4">
                             <div className="font-medium mb-3">Summary</div>
-                            <textarea
-                                defaultValue={item.summary}
-                                className="w-full h-40 resize-none rounded-xl border bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                            />
+                            <textarea /* … */ />
                             <div className="mt-3 text-right">
-                                <Button size="sm" className="rounded-xl" type="button">
-                                    Save summary
-                                </Button>
+                                <Button size="sm" className="rounded-xl" type="button">Save summary</Button>
                             </div>
                         </div>
 
                         {/* Metadata */}
                         <div className="rounded-2xl border p-4">
                             <div className="font-medium mb-3">Metadata</div>
-                            <div className="space-y-3">
-                                <div>
-                                    <Label className="text-sm">Title</Label>
-                                    <Input defaultValue={item.title} className="rounded-xl" />
-                                </div>
-                                <div>
-                                    <Label className="text-sm">Author</Label>
-                                    <Input defaultValue={item.author} className="rounded-xl" />
-                                </div>
-                                <div>
-                                    <Label className="text-sm">Tags</Label>
-                                    <Input defaultValue={item.tags.join(", ")} className="rounded-xl" />
-                                </div>
-                                <div className="flex gap-2 pt-2">
-                                    <Button variant="destructive" className="rounded-xl gap-2" type="button">
-                                        <Trash2 className="w-4 h-4" />
-                                        Delete
-                                    </Button>
-                                    <Button variant="secondary" className="rounded-xl gap-2" type="button">
-                                        <RefreshCw className="w-4 h-4" />
-                                        Reprocess OCR
-                                    </Button>
-                                    <Button className="rounded-xl" type="button">
-                                        Save
-                                    </Button>
-                                </div>
+                            {/* Title/Author/Tags Inputs … */}
+                            <div className="flex gap-2 pt-2">
+                                <Button
+                                    variant="destructive"
+                                    className="rounded-xl gap-2"
+                                    type="button"
+                                    onClick={() => onDelete?.(item)}
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                    Delete
+                                </Button>
+                                {/* Reprocess optional */}
+                                <Button className="rounded-xl" type="button" onClick={() => onSave?.(item)}>
+                                    Save
+                                </Button>
                             </div>
                         </div>
 
-                        {/* OCR Text */}
-                        {/*<div className="rounded-2xl border p-4">*/}
-                        {/*    <div className="font-medium mb-3">OCR Text</div>*/}
-                        {/*    <div className="text-sm text-muted-foreground space-y-2 max-h-48 overflow-auto">*/}
-                        {/*        <p>*/}
-                        {/*            …preview of OCR text… In the real app this area renders the extracted text and supports*/}
-                        {/*            find-in-text.*/}
-                        {/*        </p>*/}
-                        {/*    </div>*/}
-                        {/*</div>*/}
-
-                        {/* Activity */}
-                        <div className="rounded-2xl border p-4">
-                            <div className="font-medium mb-3">Activity</div>
-                            <ul className="text-sm space-y-2">
-                                <li className="flex items-center gap-2">
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Uploaded on {item.date}
-                                </li>
-                                <li className="flex items-center gap-2">
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Indexed in ElasticSearch
-                                </li>
-                                <li className="flex items-center gap-2">
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Summary generated
-                                </li>
-                            </ul>
-                        </div>
+                        {/* Activity … */}
                     </div>
                 </div>
             </div>
@@ -254,12 +351,37 @@ function DocumentDetailDialog({ item, open, onClose }) {
     );
 }
 
+async function handleDeleteFromDialog(doc) {
+    if (!doc?.id) return;
+    if (!window.confirm(`Delete "${doc.title}"?`)) return;
+    try {
+        await deleteDocumentsBulk([doc.id]);               
+        setItems(prev => prev.filter(x => x.id !== doc.id));
+        setOpenItem(null);
+    } catch (e) {
+        console.error(e);
+        alert("Delete failed");
+    }
+}
+
+async function handleSaveFromDialog(doc) {
+    // hier würdest du Title/Author/Tags aus lokalen States lesen und an API senden
+    // await updateDocument(doc.id, { title, author, tags })
+    // und danach in items aktualisieren:
+    // setItems(prev => prev.map(x => x.id === doc.id ? { ...x, title, author, tags } : x));
+    alert("Save clicked (API-Wiring noch hinzufügen)");
+}
+
 
 export default function Dashboard() {
+    const confirm = useConfirm();
     const [items, setItems] = React.useState([]);           
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState(null);
     const [tab, setTab] = React.useState("results");
+    const [selected, setSelected] = React.useState(new Set());
+    const [busy, setBusy] = React.useState(false);
+    const [err, setErr] = React.useState(null);
 
     const [openItem, setOpenItem] = React.useState(null);   
 
@@ -285,22 +407,101 @@ export default function Dashboard() {
         return () => { cancelled = true; };
     }, []);
 
-    // Klick auf Karte -> optional Details frisch laden
-    async function handleOpen(itemLike) {
+    function handleOpen(item) {
+        setOpenItem(item);
+    }
+
+    async function handleDeleteFromPanel(doc) {
+        if (!doc?.id) return;
+
+        const ok = await confirm({
+            title: <>Delete “{doc.title}”?</>,
+            confirmText: "Delete",
+            destructive: true,
+        });
+        if (!ok) return;
+
+
         try {
-            // Falls du die ID hast und Details abweichen können:
-            if (itemLike.id) {
-                const fresh = await getDocument(itemLike.id);
-                setOpenItem(mapToCardItem(fresh));
-            } else {
-                setOpenItem(itemLike);
-            }
+            await deleteDocumentsBulk([doc.id]);
+            setItems(prev => prev.filter(x => x.id !== doc.id));
+            setSelected(prev => { const n = new Set(prev); n.delete(doc.id); return n; });
+            setOpenItem(null);
         } catch (e) {
             console.error(e);
-            // Zur Not trotzdem öffnen
-            setOpenItem(itemLike);
+            alert("Delete failed");
         }
     }
+
+    async function handleSaveFromPanel(payload) {
+        if (!openItem?.id) return;
+        try {
+            const updated = await updateDocument(openItem.id, payload);
+            setItems(prev => prev.map(x => x.id === updated.id ? { ...x, ...mapToCardItem(updated) } : x));
+            setOpenItem(prev => (prev ? { ...prev, ...mapToCardItem(updated) } : prev));
+        } catch (e) {
+            console.error(e);
+            alert(e.message || "Save failed");
+        }
+    }
+
+    // Klick auf Karte -> optional Details frisch laden
+    async function handleDeleteFromDialog(doc) {
+        if (!doc?.id) return;
+        if (!window.confirm(`Delete "${doc.title}"?`)) return;
+        try {
+            await deleteDocumentsBulk([doc.id]);           // oder deleteDocument(doc.id)
+            setItems(prev => prev.filter(x => x.id !== doc.id));
+            setOpenItem(null);
+        } catch (e) {
+            console.error(e);
+            alert("Delete failed");
+        }
+    }
+
+    function toggleSelect(id) {
+        setSelected(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    }
+    function clearSelection() { setSelected(new Set()); }
+    function selectAll() { setSelected(new Set(items.map(x => x.id))); }
+    function invertSelection() {
+        setSelected(prev => new Set(items.filter(x => !prev.has(x.id)).map(x => x.id)));
+    }
+
+    async function deleteSelected() {
+        if (selected.size === 0) return;
+
+        const ok = await confirm({
+            title: `Delete ${selected.size} item${selected.size > 1 ? "s" : ""}?`,
+            confirmText: "Delete",
+            destructive: true,
+        });
+        if (!ok) return;
+
+        setBusy(true);
+        setErr(null);
+
+        // Optimistic UI: sofort ausblenden
+        const ids = Array.from(selected);
+        const prevItems = items;
+        setItems(prev => prev.filter(x => !selected.has(x.id)));
+        clearSelection();
+
+        try {
+            await deleteDocumentsBulk(ids);   // nutzt Bulk-Endpoint oder Fallback
+        } catch (e) {
+            // Rollback bei Fehler
+            setItems(prevItems);
+            setErr(e?.message ?? "Delete failed");
+        } finally {
+            setBusy(false);
+        }
+    }
+
 
     return (
         <div className="min-h-screen bg-background text-foreground">
@@ -399,17 +600,25 @@ export default function Dashboard() {
                                 <TabsContent value="results" className="mt-2">
                                     <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
                                         {items.map(it => (
-                                            <ResultCard key={it.id ?? it.title} item={it} onOpen={() => handleOpen(it)} />
+                                            <ResultCard
+                                                key={it.id ?? it.title}
+                                                item={it}
+                                                onOpen={handleOpen}                  // <— wichtig
+                                                selected={selected.has(it.id)}
+                                                onToggle={() => toggleSelect(it.id)}
+                                            />
                                         ))}
                                     </div>
 
-                                    {/* Detail Dialog */}
-                                    <DocumentDetailDialog
+                                    {/* Rechts: Side Panel */}
+                                    <RightDetailPanel
                                         item={openItem}
-                                        open={!!openItem}
                                         onClose={() => setOpenItem(null)}
+                                        onDelete={handleDeleteFromPanel}
+                                        onSave={handleSaveFromPanel}
                                     />
                                 </TabsContent>
+
 
                                 <TabsContent value="manage" className="mt-2 space-y-6">
                                     {/* Bulk actions */}
@@ -419,17 +628,25 @@ export default function Dashboard() {
                                         </CardHeader>
                                         <CardContent>
                                             <p className="text-sm text-muted-foreground">
-                                                Select multiple documents from Results to run actions.
+                                                {selected.size} selected
+                                                {err && <span className="text-destructive ml-2">{String(err)}</span>}
                                             </p>
                                             <div className="flex flex-wrap gap-3 mt-4">
-                                                <Button variant="secondary" className="rounded-xl gap-2" type="button">
+                                                <Button variant="secondary" className="rounded-xl gap-2" type="button"
+                                                    onClick={() => { }} disabled={busy || selected.size === 0}>
                                                     <Tag className="w-4 h-4" /> Update tags
                                                 </Button>
-                                                {/*<Button variant="secondary" className="rounded-xl gap-2" type="button">*/}
-                                                {/*    <RefreshCw className="w-4 h-4" /> Reprocess OCR*/}
-                                                {/*</Button>*/}
-                                                <Button variant="destructive" className="rounded-xl gap-2" type="button">
-                                                    <Trash2 className="w-4 h-4" /> Delete
+                                                <Button variant="destructive" className="rounded-xl gap-2" type="button"
+                                                    onClick={deleteSelected} disabled={busy || selected.size === 0}>
+                                                    <Trash2 className="w-4 h-4" /> {busy ? "Deleting…" : "Delete"}
+                                                </Button>
+                                                <Button variant="outline" className="rounded-xl" type="button"
+                                                    onClick={clearSelection} disabled={busy || selected.size === 0}>
+                                                    Clear
+                                                </Button>
+                                                <Button variant="outline" className="rounded-xl" type="button"
+                                                    onClick={selectAll} disabled={busy || items.length === 0}>
+                                                    Select all
                                                 </Button>
                                             </div>
                                         </CardContent>
@@ -513,7 +730,7 @@ function mapToCardItem(dto) {
         title: dto.title ?? "Untitled",
         date: dto.createdAt?.slice(0, 10) ?? "", 
         preview: dto.description ?? "—",
-        tags: dto.tags ?? [],
+        tags: Array.isArray(dto.tags) ? dto.tags : [],
         summary: dto.description ?? "—", 
         author: dto.author ?? "System",
     };

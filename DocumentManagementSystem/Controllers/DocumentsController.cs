@@ -10,10 +10,12 @@ namespace DocumentManagementSystem.Controllers;
 public class DocumentsController : ControllerBase
 {
     private readonly DocumentService _service;
+    private readonly RabbitMqService _rabbitMqService; 
 
-    public DocumentsController(DocumentService service)
+    public DocumentsController(DocumentService service, RabbitMqService rabbitMqService)
     {
         _service = service;
+        _rabbitMqService = rabbitMqService; 
     }
 
     [HttpPost]
@@ -24,6 +26,18 @@ public class DocumentsController : ControllerBase
             return ValidationProblem(ModelState);
 
         var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), ct);
+
+        var safeTitle = string.Concat(form.Title.Where(c => char.IsLetterOrDigit(c) || c == '_'));
+        var extension = Path.GetExtension(form.File.FileName);
+        var fileName = $"{safeTitle}_{saved.Id}{extension}";
+        var filePath = Path.Combine("files", fileName);
+        Directory.CreateDirectory("files");
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await form.File.CopyToAsync(stream, ct);
+        }
+
+        _rabbitMqService.SendOcrMessage(new { DocumentId = saved.Id, FileName = saved.Title });
         return CreatedAtAction(nameof(GetById), new { id = saved.Id }, DocumentMapper.ToDto(saved));
     }
 
@@ -33,4 +47,44 @@ public class DocumentsController : ControllerBase
         var d = await _service.GetAsync(id, ct);
         return d is null ? NotFound() : Ok(DocumentMapper.ToDto(d));
     }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete([FromRoute] Guid id, CancellationToken ct)
+    {
+        var ok = await _service.DeleteAsync(id, ct);
+        return ok ? NoContent() : NotFound();
+    }
+
+    [HttpPost("bulk-delete")]
+    public async Task<IActionResult> BulkDelete([FromBody] List<Guid> ids, CancellationToken ct)
+    {
+        if (ids is null || ids.Count == 0) return BadRequest();
+        var deleted = await _service.DeleteManyAsync(ids, ct);
+        return Ok(new { deleted });
+    }
+
+    [HttpGet] // GET /api/Documents?page=0&size=20
+    public async Task<IActionResult> List([FromQuery] int page = 0, [FromQuery] int size = 20, CancellationToken ct = default)
+    {
+        var (items, total) = await _service.ListAsync(page, size, ct);
+        return Ok(new
+        {
+            items = items.Select(DocumentMapper.ToDto).ToList(),
+            total,
+            page,
+            size
+        });
+    }
+
+    [HttpPatch("{id:guid}")]
+    public async Task<IActionResult> Update([FromRoute] Guid id, [FromBody] DocumentUpdateDto dto, CancellationToken ct)
+    {
+        var updated = await _service.UpdateAsync(id, dto.Title, dto.Description, dto.Tags ?? new(), ct);
+        return updated is null ? NotFound() : Ok(DocumentMapper.ToDto(updated));
+    }
+
+    // Optional als Alias:
+    [HttpPut("{id:guid}")]
+    public Task<IActionResult> Put([FromRoute] Guid id, [FromBody] DocumentUpdateDto dto, CancellationToken ct)
+        => Update(id, dto, ct);
 }

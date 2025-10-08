@@ -13,15 +13,16 @@ builder.Services.AddDbContext<DmsDbContext>(opt => opt.UseNpgsql(connectionStrin
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 builder.Services.AddScoped<ITagRepository, TagRepository>();
 builder.Services.AddScoped<DocumentService>();
+builder.Services.AddSingleton<RabbitMqService>();
 
 const string AllowFrontend = "_allowFrontend";
+
 builder.Services.AddCors(opts =>
 {
     opts.AddPolicy(AllowFrontend, p => p
         .WithOrigins("http://localhost:5173", "http://localhost:3000") 
         .AllowAnyHeader()
         .AllowAnyMethod()
-    // .AllowCredentials() // nur wenn du Cookies brauchst
     );
 });
 
@@ -46,14 +47,10 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Docker"))
+if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName == "Docker")
 {
     app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "DMS v1");
-        c.RoutePrefix = string.Empty; // serve UI at http://host:port/
-    });
+    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "DMS v1"));
 }
 
 app.UseCors(AllowFrontend);
