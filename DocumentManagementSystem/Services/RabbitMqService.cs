@@ -18,7 +18,9 @@ public class RabbitMqService
     {
         using var connection = _factory.CreateConnectionAsync().GetAwaiter().GetResult();
         using var channel = connection.CreateChannelAsync().GetAwaiter().GetResult();
+
         channel.QueueDeclareAsync(_queueName, durable: true, exclusive: false, autoDelete: false);
+
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
         channel.BasicPublishAsync(exchange: "", routingKey: _queueName, body: body);
     }

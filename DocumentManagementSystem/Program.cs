@@ -12,7 +12,7 @@ builder.Services.AddDbContext<DmsDbContext>(opt => opt.UseNpgsql(connectionStrin
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 builder.Services.AddScoped<ITagRepository, TagRepository>();
 builder.Services.AddScoped<DocumentService>();
-builder.Services.AddSingleton(new RabbitMqService("rabbitmq"));
+builder.Services.AddSingleton<RabbitMqService>();
 
 const string AllowFrontend = "_allowFrontend";
 
