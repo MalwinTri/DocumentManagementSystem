@@ -36,6 +36,8 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+app.UseMiddleware<ErrorHandlingMiddleware>();
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<DmsDbContext>();
@@ -55,20 +57,10 @@ if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName == "Docke
 
 app.UseCors(AllowFrontend);
 
-
-
-//  only redirect to HTTPS when NOT in Docker.
-
-
 if (!app.Environment.IsEnvironment("Docker"))
 {
     app.UseHttpsRedirection();
 }
-
-
-
-
-app.UseMiddleware<ErrorHandlingMiddleware>();
 
 app.UseAuthorization();
 app.MapControllers();

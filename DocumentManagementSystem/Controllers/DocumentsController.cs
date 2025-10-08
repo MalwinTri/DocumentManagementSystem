@@ -1,5 +1,7 @@
 ﻿using DocumentManagementSystem.Dto;
+using DocumentManagementSystem.Exceptions;
 using DocumentManagementSystem.Mapping;
+using DocumentManagementSystem.Models;
 using DocumentManagementSystem.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,34 +12,54 @@ namespace DocumentManagementSystem.Controllers;
 public class DocumentsController : ControllerBase
 {
     private readonly DocumentService _service;
-    private readonly RabbitMqService _rabbitMqService; 
+    private readonly RabbitMqService _rabbitMqService;
 
     public DocumentsController(DocumentService service, RabbitMqService rabbitMqService)
     {
         _service = service;
-        _rabbitMqService = rabbitMqService; 
+        _rabbitMqService = rabbitMqService;
     }
 
     [HttpPost]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> Upload([FromForm] DocumentUploadForm form, CancellationToken ct)
     {
-        if (!ModelState.IsValid)
-            return ValidationProblem(ModelState);
+        var errors = new Dictionary<string, string[]>();
+        if (form.File is null || form.File.Length == 0) errors["file"] = new[] { "File is required." };
+        if (string.IsNullOrWhiteSpace(form.Title)) errors["title"] = new[] { "Title is required." };
+        if (errors.Count > 0) throw new ValidationException(errors: errors);
 
         var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), ct);
 
-        var safeTitle = string.Concat(form.Title.Where(c => char.IsLetterOrDigit(c) || c == '_'));
-        var extension = Path.GetExtension(form.File.FileName);
-        var fileName = $"{safeTitle}_{saved.Id}{extension}";
-        var filePath = Path.Combine("files", fileName);
-        Directory.CreateDirectory("files");
-        using (var stream = new FileStream(filePath, FileMode.Create))
+        try
         {
-            await form.File.CopyToAsync(stream, ct);
+            var safeTitle = string.Concat(form.Title.Where(c => char.IsLetterOrDigit(c) || c == '_'));
+            var file = form.File!;
+            var extension = Path.GetExtension(file.FileName);
+            var fileName = $"{safeTitle}_{saved.Id}{extension}";
+            var dir = "files";
+            Directory.CreateDirectory(dir);
+            var filePath = Path.Combine(dir, fileName);
+
+            await using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
+            await file.CopyToAsync(stream, ct);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            throw new OperationFailedException("Could not persist uploaded file", code: "file_io_error", inner: ex);
         }
 
-        _rabbitMqService.SendOcrMessage(new { DocumentId = saved.Id, FileName = saved.Title });
+        try
+        {
+            _rabbitMqService.SendOcrMessage(new { DocumentId = saved.Id, FileName = saved.Title });
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            throw new OperationFailedException("Could not enqueue OCR job", code: "enqueue_failed", inner: ex);
+        }
+
         return CreatedAtAction(nameof(GetById), new { id = saved.Id }, DocumentMapper.ToDto(saved));
     }
 
@@ -45,25 +67,32 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken ct)
     {
         var d = await _service.GetAsync(id, ct);
-        return d is null ? NotFound() : Ok(DocumentMapper.ToDto(d));
+        if (d is null) throw NotFoundException.For<Document>(id);
+        return Ok(DocumentMapper.ToDto(d));
     }
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete([FromRoute] Guid id, CancellationToken ct)
     {
         var ok = await _service.DeleteAsync(id, ct);
-        return ok ? NoContent() : NotFound();
+        if (!ok) throw NotFoundException.For<Document>(id);
+        return NoContent();
     }
 
     [HttpPost("bulk-delete")]
     public async Task<IActionResult> BulkDelete([FromBody] List<Guid> ids, CancellationToken ct)
     {
-        if (ids is null || ids.Count == 0) return BadRequest();
+        if (ids is null || ids.Count == 0)
+            throw new ValidationException(errors: new Dictionary<string, string[]>
+            {
+                ["ids"] = new[] { "At least one id is required." }
+            });
+
         var deleted = await _service.DeleteManyAsync(ids, ct);
         return Ok(new { deleted });
     }
 
-    [HttpGet] // GET /api/Documents?page=0&size=20
+    [HttpGet]
     public async Task<IActionResult> List([FromQuery] int page = 0, [FromQuery] int size = 20, CancellationToken ct = default)
     {
         var (items, total) = await _service.ListAsync(page, size, ct);
@@ -79,11 +108,13 @@ public class DocumentsController : ControllerBase
     [HttpPatch("{id:guid}")]
     public async Task<IActionResult> Update([FromRoute] Guid id, [FromBody] DocumentUpdateDto dto, CancellationToken ct)
     {
+        if (dto is null) throw new ValidationException(detail: "Body is required");
+
         var updated = await _service.UpdateAsync(id, dto.Title, dto.Description, dto.Tags ?? new(), ct);
-        return updated is null ? NotFound() : Ok(DocumentMapper.ToDto(updated));
+        if (updated is null) throw NotFoundException.For<Document>(id);
+        return Ok(DocumentMapper.ToDto(updated));
     }
 
-    // Optional als Alias:
     [HttpPut("{id:guid}")]
     public Task<IActionResult> Put([FromRoute] Guid id, [FromBody] DocumentUpdateDto dto, CancellationToken ct)
         => Update(id, dto, ct);

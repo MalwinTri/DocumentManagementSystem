@@ -58,7 +58,6 @@ public class DocumentService
                 doc.Tags.Add(tag);
             }
         }
-
         return await _docRepo.AddAsync(doc, ct);
     }
 

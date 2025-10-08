@@ -1,15 +1,32 @@
-﻿using System.Text.Json;
-using DocumentManagementSystem.Exceptions;
+﻿using System.Net;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using DocumentManagementSystem.Exceptions;
 
 namespace DocumentManagementSystem.Middleware;
 
 public sealed class ErrorHandlingMiddleware
 {
-    private readonly RequestDelegate _next;
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = false
+    };
 
-    public ErrorHandlingMiddleware(RequestDelegate next) => _next = next;
+    private readonly RequestDelegate _next;
+    private readonly ILogger<ErrorHandlingMiddleware> _logger;
+    private readonly IHostEnvironment _env;
+
+    public ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandlingMiddleware> logger, IHostEnvironment env)
+    {
+        _next = next;
+        _logger = logger;
+        _env = env;
+    }
 
     public async Task InvokeAsync(HttpContext context)
     {
@@ -17,33 +34,65 @@ public sealed class ErrorHandlingMiddleware
         {
             await _next(context);
         }
-        catch (AppException ex) // any of custom exceptions
+        // häufige Spezialfälle VOR dem generischen Catch
+        catch (BadHttpRequestException ex)
         {
-            var pd = MapToProblemDetails(context, ex, out var status);
-            context.Response.ContentType = "application/problem+json";
-            context.Response.StatusCode = status;
-            await context.Response.WriteAsync(JsonSerializer.Serialize(pd));
+            await WriteProblem(context, MapBadRequest(context, ex), StatusCodes.Status400BadRequest, ex);
         }
-        catch (Exception)
+        catch (OperationCanceledException ex) when (context.RequestAborted.IsCancellationRequested)
+        {
+            // 499 = Client Closed Request (nginx), ASP.NET hat keinen StatusCode-Const dafür
+            await WriteProblem(context, MapClientClosed(context, ex), 499, ex);
+        }
+        catch (AppException ex)
+        {
+            var pd = MapAppException(context, ex, out var status);
+            await WriteProblem(context, pd, status, ex);
+        }
+        catch (Exception ex)
         {
             var pd = new ProblemDetails
             {
                 Title = "Internal server error",
                 Status = StatusCodes.Status500InternalServerError,
                 Type = "about:blank",
-                Detail = "An unexpected error occurred."
+                Detail = _env.IsDevelopment() ? ex.ToString() : "An unexpected error occurred.",
+                Instance = context.Request.Path
             };
             pd.Extensions["traceId"] = context.TraceIdentifier;
 
-            context.Response.ContentType = "application/problem+json";
-            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-            await context.Response.WriteAsync(JsonSerializer.Serialize(pd));
+            await WriteProblem(context, pd, StatusCodes.Status500InternalServerError, ex, logAsError: true);
         }
     }
 
-    private static ProblemDetails MapToProblemDetails(HttpContext ctx, AppException ex, out int status)
+    private async Task WriteProblem(HttpContext ctx, ProblemDetails pd, int statusCode, Exception ex, bool logAsError = false)
     {
-        // Map your six exceptions to HTTP. Keep it simple.
+        // Logging
+        var level = logAsError || statusCode >= 500 ? LogLevel.Error :
+                    statusCode >= 400 ? LogLevel.Warning : LogLevel.Information;
+
+        _logger.Log(level, ex, "HTTP {Status} {Title}. Path={Path} TraceId={TraceId}",
+            statusCode, pd.Title, ctx.Request.Path, ctx.TraceIdentifier);
+
+        // Wenn bereits gestartet: nichts mehr schreiben
+        if (ctx.Response.HasStarted)
+        {
+            _logger.LogWarning("Response already started. Cannot write problem details.");
+            return;
+        }
+
+        ctx.Response.StatusCode = statusCode;
+        ctx.Response.ContentType = "application/problem+json";
+
+        // HEAD-Requests: keinen Body
+        if (HttpMethods.IsHead(ctx.Request.Method))
+            return;
+
+        await ctx.Response.WriteAsync(JsonSerializer.Serialize(pd, JsonOpts));
+    }
+
+    private static ProblemDetails MapAppException(HttpContext ctx, AppException ex, out int status)
+    {
         (string type, string title, int http) = ex switch
         {
             ValidationException => ("https://httpstatuses.com/400", "Validation failed", StatusCodes.Status400BadRequest),
@@ -61,15 +110,16 @@ public sealed class ErrorHandlingMiddleware
             Type = type,
             Title = title,
             Status = http,
-            Detail = ex.Detail ?? ex.Message
+            Detail = ex.Detail ?? ex.Message,
+            Instance = ctx.Request.Path
         };
+
+        pd.Extensions["traceId"] = ctx.TraceIdentifier;
 
         if (!string.IsNullOrWhiteSpace(ex.Code))
             pd.Extensions["code"] = ex.Code;
 
-        pd.Extensions["traceId"] = ctx.TraceIdentifier;
-
-        if (ex is ValidationException vex && vex.Errors.Any())
+        if (ex is ValidationException vex && vex.Errors?.Any() == true)
             pd.Extensions["errors"] = vex.Errors;
 
         if (ex is NotFoundException nfx)
@@ -79,17 +129,29 @@ public sealed class ErrorHandlingMiddleware
             if (nfx.ResourceId is not null)
                 pd.Extensions["id"] = nfx.ResourceId;
         }
-        /*
-        if (ex is UniqueConstraintViolationException uex)
-        {
-            if (!string.IsNullOrWhiteSpace(uex.ConstraintName))
-                pd.Extensions["constraint"] = uex.ConstraintName;
-            if (uex.Value is not null)
-                pd.Extensions["value"] = uex.Value;
-        }
-
-        */
 
         return pd;
     }
+
+    private static ProblemDetails MapBadRequest(HttpContext ctx, BadHttpRequestException ex) =>
+        new()
+        {
+            Type = "https://httpstatuses.com/400",
+            Title = "Bad request",
+            Status = StatusCodes.Status400BadRequest,
+            Detail = ex.Message,
+            Instance = ctx.Request.Path,
+            Extensions = { ["traceId"] = ctx.TraceIdentifier }
+        };
+
+    private static ProblemDetails MapClientClosed(HttpContext ctx, OperationCanceledException ex) =>
+        new()
+        {
+            Type = "about:blank",
+            Title = "Client closed request",
+            Status = 499, // custom
+            Detail = "The request was aborted by the client.",
+            Instance = ctx.Request.Path,
+            Extensions = { ["traceId"] = ctx.TraceIdentifier }
+        };
 }
