@@ -52,5 +52,18 @@
       timeout: 5s
       retries: 5
 
+  ocr-worker:
+    build:
+      context: ../OCR_Worker        # direkt in den Worker-Ordner bauen
+      dockerfile: Dockerfile        # Dockerfile liegt dort
+    container_name: dms-ocr-worker
+    environment:
+      - RABBIT_HOST=rabbitmq
+      - RABBIT_QUEUE=ocr-queue
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   dms-data:
