@@ -18,8 +18,8 @@
 
   api:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: .                       # Repo-/Lösungs-Root
+      dockerfile: "Dockerfile"         # <- im Root (so wie in deinem Screenshot)
     container_name: dms-api
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
@@ -54,12 +54,12 @@
 
   ocr-worker:
     build:
-      context: ../OCR_Worker        # direkt in den Worker-Ordner bauen
-      dockerfile: Dockerfile        # Dockerfile liegt dort
+      context: .                       # Repo-/Lösungs-Root (SEHR wichtig!)
+      dockerfile: "DocumentManagementSystem.OCR_Worker/Dockerfile"
     container_name: dms-ocr-worker
     environment:
-      - RABBIT_HOST=rabbitmq
-      - RABBIT_QUEUE=ocr-queue
+      RABBIT_HOST: rabbitmq
+      RABBIT_QUEUE: ocr-queue
     depends_on:
       rabbitmq:
         condition: service_healthy

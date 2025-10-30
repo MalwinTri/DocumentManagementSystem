@@ -1,8 +1,11 @@
-﻿using System.Text.RegularExpressions;
+﻿using DocumentManagementSystem.DAL;
+using DocumentManagementSystem.DAL.Postgres.Exceptions;       
 using DocumentManagementSystem.Exceptions;
 using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Npgsql;
+using System.Text.RegularExpressions;
 
 namespace DocumentManagementSystem.Database.Repositories;
 
@@ -13,28 +16,28 @@ public class TagRepository(DmsDbContext db, ILogger<TagRepository> logger) : ITa
 
     public async Task<Tag> GetOrCreateAsync(string name, CancellationToken ct = default)
     {
-        var n = Normalize(name);
+        // DAL wirft keine BL-Exceptions -> Guard als ArgumentException
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Tag name is required.", nameof(name));
 
-        if (string.IsNullOrWhiteSpace(n))
-        {
-            throw new ValidationException(
-                code: "validation_error",
-                detail: "Tag name is required.",
-                errors: new Dictionary<string, string[]> { ["name"] = new[] { "Tag name is required." } }
-            );
-        }
+        var normalized = Normalize(name);
+        var normalizedLower = normalized.ToLower();
 
-        _logger.LogDebug("GetOrCreateAsync called for tag='{TagName}'", n);
+        _logger.LogDebug("GetOrCreateAsync called for tag='{TagName}'", normalized);
 
+        // READ: no tracking, case-insensitive Vergleich via ToLower() (EF übersetzt zu LOWER(name)=...)
         var existing = await _db.Tags
-            .FirstOrDefaultAsync(t => EF.Functions.ILike(t.Name, n), ct);
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Name.ToLower() == normalizedLower, ct);
+
         if (existing is not null)
         {
             _logger.LogDebug("Tag exists: {TagName} (Id={Id})", existing.Name, existing.Id);
             return existing;
         }
 
-        var tag = new Tag { Name = n };
+        // CREATE
+        var tag = new Tag { Name = normalized };
         _db.Tags.Add(tag);
 
         try
@@ -43,17 +46,20 @@ public class TagRepository(DmsDbContext db, ILogger<TagRepository> logger) : ITa
             _logger.LogInformation("Created new tag '{TagName}' (Id={Id})", tag.Name, tag.Id);
             return tag;
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException pg &&
-                                           pg.SqlState == PostgresErrorCodes.UniqueViolation)
+        // Unique-Verletzung -> versuche bestehenden Datensatz erneut zu laden
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg)
         {
             _db.Entry(tag).State = EntityState.Detached;
 
-            var loaded = await _db.Tags.FirstOrDefaultAsync(t => EF.Functions.ILike(t.Name, n), ct);
+            var loaded = await _db.Tags
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Name.ToLower() == normalizedLower, ct);
+
             if (loaded is not null) return loaded;
 
             throw new UniqueConstraintViolationException(
                 constraintName: pg.ConstraintName,
-                value: new { field = "name", value = n },
+                value: new { field = "name", value = normalized },
                 entity: nameof(Tag),
                 detail: pg.Detail,
                 inner: ex
@@ -61,7 +67,7 @@ public class TagRepository(DmsDbContext db, ILogger<TagRepository> logger) : ITa
         }
         catch (DbUpdateException ex)
         {
-            _logger.LogError(ex, "DB update failed while creating tag '{TagName}'", n);
+            _logger.LogError(ex, "DB update failed while creating tag '{TagName}'", normalized);
             throw new RepositoryException(
                 message: "DB update failed",
                 operation: "save_changes",
@@ -75,9 +81,7 @@ public class TagRepository(DmsDbContext db, ILogger<TagRepository> logger) : ITa
     {
         var s = (input ?? string.Empty).Trim();
         if (s.Length == 0) return s;
-
         s = Regex.Replace(s, @"\s+", " ");
-
         return s;
     }
 }

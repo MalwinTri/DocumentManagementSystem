@@ -1,4 +1,5 @@
 ﻿namespace DocumentManagementSystem.Exceptions
+
 {
     public sealed class ConflictException : AppException
     {

@@ -1,6 +1,9 @@
-﻿using DocumentManagementSystem.Exceptions;
+﻿using DocumentManagementSystem.DAL;
+using DocumentManagementSystem.DAL.Postgres.Exceptions;
+using DocumentManagementSystem.Exceptions;
 using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace DocumentManagementSystem.Database.Repositories;

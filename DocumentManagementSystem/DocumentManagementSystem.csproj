@@ -10,6 +10,29 @@
     <TypeScriptToolsVersion>Latest</TypeScriptToolsVersion>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Remove="Database\**" />
+    <Compile Remove="Mapping\**" />
+    <Compile Remove="Models\**" />
+    <Compile Remove="Shared\**" />
+    <Content Remove="Database\**" />
+    <Content Remove="Mapping\**" />
+    <Content Remove="Models\**" />
+    <Content Remove="Shared\**" />
+    <EmbeddedResource Remove="Database\**" />
+    <EmbeddedResource Remove="Mapping\**" />
+    <EmbeddedResource Remove="Models\**" />
+    <EmbeddedResource Remove="Shared\**" />
+    <None Remove="Database\**" />
+    <None Remove="Mapping\**" />
+    <None Remove="Models\**" />
+    <None Remove="Shared\**" />
+    <TypeScriptCompile Remove="Database\**" />
+    <TypeScriptCompile Remove="Mapping\**" />
+    <TypeScriptCompile Remove="Models\**" />
+    <TypeScriptCompile Remove="Shared\**" />
+  </ItemGroup>
+
   <!-- Falls irgendwo versehentlich TS-Dateien eingebunden wurden, sicherheitshalber entfernen -->
   <ItemGroup>
     <None Remove="DocumentManagementSystem.UI\src\api\client.ts" />
@@ -45,6 +68,11 @@
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
     <PackageReference Include="xunit" Version="2.9.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DocumentManagementSystem.API\DocumentManagementSystem.API.csproj" />
+    <ProjectReference Include="..\DocumentManagementSystem.DAL\DocumentManagementSystem.DAL.csproj" />
   </ItemGroup>
 
 

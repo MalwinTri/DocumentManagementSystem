@@ -1,9 +1,11 @@
-﻿using DocumentManagementSystem.Database.Repositories;
-using DocumentManagementSystem.Exceptions;
+﻿using DocumentManagementSystem.Services;
 using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using DocumentManagementSystem.Exceptions;
+using DocumentManagementSystem.DAL;
 
-namespace DocumentManagementSystem.Services;
+namespace DocumentManagementSystem.BL.Documents;
 
 public class DocumentService
 {
