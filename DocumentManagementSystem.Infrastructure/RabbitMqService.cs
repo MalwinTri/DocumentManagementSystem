@@ -11,12 +11,10 @@ public class RabbitMqService
     private readonly string _queueName = "ocr-queue";
     private readonly ILogger<RabbitMqService> _logger;
 
-    public RabbitMqService(string hostName = "rabbitmq")
+    public RabbitMqService(ILogger<RabbitMqService> logger, string hostName = "rabbitmq")
     {
-        _factory = new ConnectionFactory() { HostName = hostName };
-
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        _logger = loggerFactory.CreateLogger<RabbitMqService>();
+        _factory = new ConnectionFactory { HostName = hostName };
+        _logger = logger;
         _logger.LogInformation("RabbitMqService initialized with host {Host}", hostName);
     }
 
@@ -31,7 +29,6 @@ public class RabbitMqService
             using var channel = connection.CreateChannelAsync().GetAwaiter().GetResult();
 
             channel.QueueDeclareAsync(_queueName, durable: true, exclusive: false, autoDelete: false);
-
             var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
             channel.BasicPublishAsync(exchange: "", routingKey: _queueName, body: body);
 
@@ -48,7 +45,7 @@ public class RabbitMqService
         try
         {
             var json = JsonSerializer.Serialize(message);
-            return json.Length <= 200 ? json : json.Substring(0, 200) + "...";
+            return json.Length <= 200 ? json : json[..200] + "...";
         }
         catch
         {

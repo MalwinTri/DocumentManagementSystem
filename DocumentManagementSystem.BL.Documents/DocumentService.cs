@@ -1,27 +1,29 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using DocumentManagementSystem.Database.Repositories;
-using DocumentManagementSystem.Exceptions;
+﻿using DocumentManagementSystem.Services;
 using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using DocumentManagementSystem.Exceptions;
+using DocumentManagementSystem.DAL;
 
-namespace DocumentManagementSystem.Services;
+namespace DocumentManagementSystem.BL.Documents;
 
 public class DocumentService
 {
     private readonly IDocumentRepository _docRepo;
     private readonly ITagRepository _tagRepo;
     private readonly ILogger<DocumentService> _logger;
+    private readonly RabbitMqService _mq;
 
-    public DocumentService(IDocumentRepository docRepo, ITagRepository tagRepo, ILogger<DocumentService> logger)
+    public DocumentService(
+        IDocumentRepository docRepo,
+        ITagRepository tagRepo,
+        ILogger<DocumentService> logger,
+        RabbitMqService mq)
     {
         _docRepo = docRepo;
         _tagRepo = tagRepo;
         _logger = logger;
+        _mq = mq;
     }
 
     public async Task<Document> CreateAsync(
@@ -79,6 +81,24 @@ public class DocumentService
         {
             var added = await _docRepo.AddAsync(doc, ct);
             _logger.LogInformation("Document created successfully. DocumentId={DocumentId}", added.Id);
+
+            try
+            {
+                var payload = new
+                {
+                    documentId = added.Id,
+                    title = added.Title,
+                    uploadedAt = DateTime.UtcNow
+                };
+
+                _logger.LogInformation("Enqueuing OCR message for DocumentId={DocumentId}", added.Id);
+                _mq.SendOcrMessage(payload);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to enqueue OCR message for DocumentId={DocumentId}", added.Id);
+            }
+
             return added;
         }
         catch (Exception ex)

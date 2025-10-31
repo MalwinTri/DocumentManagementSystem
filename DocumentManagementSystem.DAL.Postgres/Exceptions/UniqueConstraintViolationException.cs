@@ -1,4 +1,6 @@
-﻿namespace DocumentManagementSystem.Exceptions;
+﻿using DocumentManagementSystem.Exceptions;
+
+namespace DocumentManagementSystem.DAL.Postgres.Exceptions;
 
 public sealed class UniqueConstraintViolationException : RepositoryException
 {

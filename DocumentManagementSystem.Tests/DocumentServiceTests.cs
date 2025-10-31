@@ -1,9 +1,9 @@
 using DocumentManagementSystem.Models;
-using DocumentManagementSystem.Database.Repositories;
 using DocumentManagementSystem.Services;
 using DocumentManagementSystem.Exceptions;
 using Moq;
-using Xunit;
+using DocumentManagementSystem.DAL;
+using DocumentManagementSystem.BL.Documents;
 using Microsoft.Extensions.Logging;
 
 namespace DocumentManagementSystem.Tests
@@ -26,11 +26,12 @@ namespace DocumentManagementSystem.Tests
         {
             var docRepo = new Mock<IDocumentRepository>();
             var tagRepo = new Mock<ITagRepository>();
+            var logger = new Mock<ILogger<DocumentService>>();
+            var mq = new Mock<RabbitMqService>();
             docRepo.Setup(r => r.AddAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
                    .ReturnsAsync((Document d, CancellationToken _) => d);
 
-            var logger = new LoggerFactory().CreateLogger<DocumentService>();
-            var service = CreateService(docRepo, tagRepo, logger);
+            var service = new DocumentService(docRepo.Object, tagRepo.Object, logger.Object, mq.Object);
 
             var result = await service.CreateAsync("Mein Titel", "Meine Beschreibung", null);
 
@@ -45,11 +46,12 @@ namespace DocumentManagementSystem.Tests
             var doc = new Document { Id = docId, Title = "Doc" };
             var docRepo = new Mock<IDocumentRepository>();
             var tagRepo = new Mock<ITagRepository>();
+            var logger = new Mock<ILogger<DocumentService>>();
+            var mq = new Mock<RabbitMqService>();
             docRepo.Setup(r => r.GetAsync(docId, It.IsAny<CancellationToken>()))
                    .ReturnsAsync(doc);
 
-            var logger = new LoggerFactory().CreateLogger<DocumentService>();
-            var service = CreateService(docRepo, tagRepo, logger);
+            var service = new DocumentService(docRepo.Object, tagRepo.Object, logger.Object, mq.Object);
 
             var result = await service.GetAsync(docId);
 
