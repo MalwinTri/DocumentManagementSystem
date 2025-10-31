@@ -6,10 +6,8 @@
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: dms
-    ports:
-      - "5433:5432"
-    volumes:
-      - dms-data:/var/lib/postgresql/data
+    ports: ["5433:5432"]
+    volumes: ["dms-data:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d dms"]
       interval: 5s
@@ -18,14 +16,13 @@
 
   api:
     build:
-      context: .                       # Repo-/Lösungs-Root
-      dockerfile: "Dockerfile"         # <- im Root (so wie in deinem Screenshot)
+      context: ..                                  # Lösungs-Root
+      dockerfile: "DocumentManagementSystem/Dockerfile"  # API-Dockerfile liegt im API-Ordner
     container_name: dms-api
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
-    ports:
-      - "8080:8080"
+    ports: ["8080:8080"]
     depends_on:
       db:
         condition: service_healthy
@@ -35,27 +32,23 @@
       context: ./DocumentManagementSystem.UI
       dockerfile: Dockerfile
     container_name: dms-ui
-    ports:
-      - "3000:80"
-    depends_on:
-      - api
+    ports: ["3000:80"]
+    depends_on: ["api"]
 
   rabbitmq:
     image: rabbitmq:3-management
     container_name: dms-rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
+    ports: ["5672:5672","15672:15672"]
     healthcheck:
-      test: ["CMD", "rabbitmqctl", "status"]
+      test: ["CMD","rabbitmqctl","status"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   ocr-worker:
     build:
-      context: .                       # Repo-/Lösungs-Root (SEHR wichtig!)
-      dockerfile: "DocumentManagementSystem.OCR_Worker/Dockerfile"
+      context: ..                                  # Lösungs-Root
+      dockerfile: "OCR_Worker/Dockerfile"          # Worker-Dockerfile liegt im Unterordner OCR_Worker
     container_name: dms-ocr-worker
     environment:
       RABBIT_HOST: rabbitmq

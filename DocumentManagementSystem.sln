@@ -15,8 +15,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentManagementSystem.DA
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentManagementSystem.Models", "DocumentManagementSystem.Models\DocumentManagementSystem.Models.csproj", "{43583E52-35BB-4B74-BA5D-62330FE00552}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentManagementSystem.API", "DocumentManagementSystem.API\DocumentManagementSystem.API.csproj", "{01415E86-54AD-412E-8E3C-D57DADAC942E}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentManagementSystem.Infrastructure", "DocumentManagementSystem.Infrastructure\DocumentManagementSystem.Infrastructure.csproj", "{8DB4AA6F-E292-40A9-BEE3-349F9C608FFA}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentManagementSystem.BL.Documents", "DocumentManagementSystem.BL.Documents\DocumentManagementSystem.BL.Documents.csproj", "{1602E82D-EE26-4EBC-933A-6AD65BCC02E1}"
@@ -53,10 +51,6 @@ Global
 		{43583E52-35BB-4B74-BA5D-62330FE00552}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{43583E52-35BB-4B74-BA5D-62330FE00552}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{43583E52-35BB-4B74-BA5D-62330FE00552}.Release|Any CPU.Build.0 = Release|Any CPU
-		{01415E86-54AD-412E-8E3C-D57DADAC942E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{01415E86-54AD-412E-8E3C-D57DADAC942E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{01415E86-54AD-412E-8E3C-D57DADAC942E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{01415E86-54AD-412E-8E3C-D57DADAC942E}.Release|Any CPU.Build.0 = Release|Any CPU
 		{8DB4AA6F-E292-40A9-BEE3-349F9C608FFA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{8DB4AA6F-E292-40A9-BEE3-349F9C608FFA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8DB4AA6F-E292-40A9-BEE3-349F9C608FFA}.Release|Any CPU.ActiveCfg = Release|Any CPU
