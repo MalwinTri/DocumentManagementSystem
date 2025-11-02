@@ -22,10 +22,22 @@
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
+      # Dateien liegen bei dir unter /app/files -> als shared Volume mounten
+      STORAGE_ROOT: /app
+      STORAGE_DOCS_SUBFOLDER: files
+      # RabbitMQ (Publisher)
+      RABBIT_HOST: rabbitmq
+      RABBIT_USER: guest
+      RABBIT_PASS: guest
+      RABBIT_QUEUE: ocr-queue
     ports: ["8080:8080"]
     depends_on:
       db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - dms-storage:/app/files   # <— shared mit dem Worker
 
   ui:
     build:
@@ -53,6 +65,11 @@
     environment:
       RABBIT_HOST: rabbitmq
       RABBIT_QUEUE: ocr-queue
+      RABBIT_PREFETCH: "1"
+      RABBIT_ENABLE_DLQ: "true"
+      # für den Fallback-Pfad im Worker ( /app/files/<id>.pdf )
+      STORAGE_ROOT: /app
+      STORAGE_DOCS_SUBFOLDER: files
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -73,3 +90,9 @@
 volumes:
   dms-data:
   garage-data:
+    volumes:
+      - dms-storage:/app/files   # <— shared mit der API
+
+volumes:
+  dms-data:
+  dms-storage:

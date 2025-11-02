@@ -38,9 +38,6 @@ public class DocumentsController : ControllerBase
             return ValidationProblem(ModelState);
         }
 
-        _logger.LogInformation("Upload started for Title={Title}", form.Title);
-
-        // Zusätzliche Validierung wie in File 1 (konsistent via ValidationException)
         var errors = new Dictionary<string, string[]>();
         if (form.File is null || form.File.Length == 0) errors["file"] = new[] { "File is required." };
         if (string.IsNullOrWhiteSpace(form.Title)) errors["title"] = new[] { "Title is required." };
@@ -50,10 +47,23 @@ public class DocumentsController : ControllerBase
         await using var fileStream = form.File?.OpenReadStream();
         var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), fileStream, ct);
 
-        // OCR-Message enqueuen
+        // 3) Nur PDFs in die OCR-Queue schicken (REST: alles akzeptiert)
         try
         {
-            _rabbitMqService.SendOcrMessage(new { DocumentId = saved.Id, FileName = saved.Title });
+            var isPdf = Path.GetExtension(fullPath).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(form.File.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase);
+
+            if (isPdf)
+            {
+                // Models.OcrJob enthält DocumentId, LocalPath, ContentType, UploadedAt
+                var job = new OcrJob(saved.Id, fullPath, "application/pdf", DateTime.UtcNow);
+                _rabbitMqService.SendOcrMessage(job);
+                _logger.LogInformation("OCR job queued for DocumentId={DocumentId}", saved.Id);
+            }
+            else
+            {
+                _logger.LogInformation("Non-PDF uploaded; skipping OCR for DocumentId={DocumentId}", saved.Id);
+            }
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -65,6 +75,7 @@ public class DocumentsController : ControllerBase
         _logger.LogInformation("Upload finished for DocumentId={DocumentId}", saved.Id);
         return CreatedAtAction(nameof(GetById), new { id = saved.Id }, DocumentMapper.ToDto(saved));
     }
+
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken ct)

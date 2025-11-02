@@ -13,12 +13,14 @@ namespace DocumentManagementSystem.Tests
         private static DocumentService CreateService(
             Mock<IDocumentRepository>? docRepo = null,
             Mock<ITagRepository>? tagRepo = null,
-            ILogger<DocumentService>? logger = null)
+            ILogger<DocumentService>? logger = null,
+            Mock<RabbitMqService>? mq = null)
         {
             docRepo ??= new Mock<IDocumentRepository>();
             tagRepo ??= new Mock<ITagRepository>();
             logger ??= new LoggerFactory().CreateLogger<DocumentService>();
-            return new DocumentService(docRepo.Object, tagRepo.Object, logger);
+            mq ??= new Mock<RabbitMqService>();
+            return new DocumentService(docRepo.Object, tagRepo.Object, logger, mq.Object);
         }
 
         [Fact]
