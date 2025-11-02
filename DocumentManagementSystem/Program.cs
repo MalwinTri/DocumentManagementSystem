@@ -7,6 +7,7 @@ using Microsoft.OpenApi.Models;
 using DocumentManagementSystem.BL.Documents;
 using DocumentManagementSystem.Middleware;
 using DocumentManagementSystem.DAL;
+using DocumentManagementSystem.Infrastructure.Services;
 
 internal class Program
 {
@@ -49,6 +50,8 @@ internal class Program
             });
             // =====================================================
 
+            builder.Services.AddSingleton<GarageS3Service>();
+
             const string AllowFrontend = "_allowFrontend";
 
             builder.Services.AddCors(opts =>
@@ -72,6 +75,9 @@ internal class Program
 
             var logger = app.Services.GetRequiredService<ILogger<Program>>();
             logger.LogInformation("Starting application in environment {Env}", app.Environment.EnvironmentName);
+
+            var garageS3 = app.Services.GetRequiredService<GarageS3Service>();
+            await garageS3.EnsureBucketExistsAsync();
 
             using (var scope = app.Services.CreateScope())
             {

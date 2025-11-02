@@ -32,7 +32,6 @@ public class DocumentsController : ControllerBase
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> Upload([FromForm] DocumentUploadForm form, CancellationToken ct)
     {
-        // ModelState-Check inkl. Logging (aus File 2)
         if (!ModelState.IsValid)
         {
             _logger.LogWarning("Upload validation failed: {ModelState}", ModelState);
@@ -48,28 +47,8 @@ public class DocumentsController : ControllerBase
         if (errors.Count > 0) throw new ValidationException(errors: errors);
 
         // Metadaten speichern
-        var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), ct);
-
-        // Datei persistieren
-        try
-        {
-            var safeTitle = string.Concat(form.Title.Where(c => char.IsLetterOrDigit(c) || c == '_'));
-            var file = form.File!;
-            var extension = Path.GetExtension(file.FileName);
-            var fileName = $"{safeTitle}_{saved.Id}{extension}";
-            var dir = "files";
-            Directory.CreateDirectory(dir);
-            var filePath = Path.Combine(dir, fileName);
-
-            await using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
-            await file.CopyToAsync(stream, ct);
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "File IO error for DocumentId={DocumentId}", saved.Id);
-            throw new FileStorageException("Could not persist uploaded file", "file_io_error", ex);
-        }
+        await using var fileStream = form.File?.OpenReadStream();
+        var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), fileStream, ct);
 
         // OCR-Message enqueuen
         try

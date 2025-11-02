@@ -71,7 +71,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\DocumentManagementSystem.API\DocumentManagementSystem.API.csproj" />
+    <ProjectReference Include="..\DocumentManagementSystem.DAL.Postgres\DocumentManagementSystem.DAL.Postgres.csproj" />
     <ProjectReference Include="..\DocumentManagementSystem.DAL\DocumentManagementSystem.DAL.csproj" />
   </ItemGroup>
 

@@ -6,8 +6,10 @@
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: dms
-    ports: ["5433:5432"]
-    volumes: ["dms-data:/var/lib/postgresql/data"]
+    ports:
+      - "5433:5432"
+    volumes:
+      - dms-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d dms"]
       interval: 5s
@@ -16,39 +18,44 @@
 
   api:
     build:
-      context: ..                                 
-      dockerfile: "DocumentManagementSystem/Dockerfile"  
+      context: .                       # Repo-/Lösungs-Root
+      dockerfile: "Dockerfile"         # <- im Root (so wie in deinem Screenshot)
     container_name: dms-api
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
-    ports: ["8080:8080"]
+    ports:
+      - "8080:8080"
     depends_on:
       db:
         condition: service_healthy
 
   ui:
     build:
-      context: ./DocumentManagementSystem.UI
+      context: ./DocumentManagementSystem/DocumentManagementSystem.UI
       dockerfile: Dockerfile
     container_name: dms-ui
-    ports: ["3000:80"]
-    depends_on: ["api"]
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
 
   rabbitmq:
     image: rabbitmq:3-management
     container_name: dms-rabbitmq
-    ports: ["5672:5672","15672:15672"]
+    ports:
+      - "5672:5672"
+      - "15672:15672"
     healthcheck:
-      test: ["CMD","rabbitmqctl","status"]
+      test: ["CMD", "rabbitmqctl", "status"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   ocr-worker:
     build:
-      context: ..                                  
-      dockerfile: "OCR_Worker/Dockerfile"       
+      context: .                       # Repo-/Lösungs-Root (SEHR wichtig!)
+      dockerfile: OCR_Worker/Dockerfile
     container_name: dms-ocr-worker
     environment:
       RABBIT_HOST: rabbitmq
@@ -58,18 +65,5 @@
         condition: service_healthy
     restart: unless-stopped
 
-  garage:
-    image: dxflrs/garage:v2.1.0
-    container_name: dms-garage
-    ports:
-      - "3900:3900"
-    environment:
-      GARAGE_API_KEY: garage-access-key
-      GARAGE_API_SECRET: garage-secret-key
-    volumes:
-      - garage-data:/data
-      - ./garage-config/garage.toml:/etc/garage.toml
-
 volumes:
   dms-data:
-  garage-data:

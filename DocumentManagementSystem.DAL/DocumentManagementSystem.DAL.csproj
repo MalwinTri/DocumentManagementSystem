@@ -4,6 +4,9 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
+	<ItemGroup>
+	  <PackageReference Include="RabbitMQ.Client" Version="7.1.2" />
+	</ItemGroup>
 	
 	<ItemGroup>
 		<ProjectReference Include="..\DocumentManagementSystem.Models\DocumentManagementSystem.Models.csproj" />
