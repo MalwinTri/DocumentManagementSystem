@@ -11,7 +11,7 @@ public class RabbitMqService
     private readonly ConnectionFactory _factory;
     private readonly string _queueName;
 
-    // Defaults passen zu deiner docker-compose (guest/guest, queue "ocr-queue")
+    // Defaults passend zur docker-compose (guest/guest, queue "ocr-queue")
     public RabbitMqService(
         ILogger<RabbitMqService> logger,
         string hostName = "rabbitmq",
@@ -35,29 +35,41 @@ public class RabbitMqService
         try
         {
             var json = JsonSerializer.Serialize(message);
-            _logger.LogDebug("Publishing to {Queue}: {Preview}",
-                _queueName, SafePreview(json));
+            _logger.LogDebug("Publishing to {Queue}: {Preview}", _queueName, SafePreview(json));
 
-            // 6.6.0: synchrone API -> kein 'await' / keine Tasks, zuverlässig
+            // RabbitMQ.Client 6.6.0: synchrone API
             using var connection = _factory.CreateConnection();
             using var channel = connection.CreateModel();
 
-            channel.QueueDeclare(
-                queue: _queueName,
-                durable: true,
-                exclusive: false,
-                autoDelete: false,
-                arguments: null);
+            // WICHTIG: Keine (Neu-)Deklaration!
+            // Nur passiv prüfen – wenn noch nicht vorhanden, loggen wir und publishen trotzdem.
+            try
+            {
+                channel.QueueDeclarePassive(_queueName);
+            }
+            catch (RabbitMQ.Client.Exceptions.OperationInterruptedException)
+            {
+                _logger.LogWarning("Queue {Queue} not found yet (likely before worker init). Publishing anyway.", _queueName);
+            }
+
+            // optional: Unroutable-Logging (falls Queue wirklich nicht existiert)
+            channel.BasicReturn += (_, args) =>
+            {
+                _logger.LogError(
+                    "Message to queue {Queue} was returned: replyCode={Code}, replyText={Text}",
+                    _queueName, args.ReplyCode, args.ReplyText);
+            };
 
             var props = channel.CreateBasicProperties();
-            props.Persistent = true;                 // Message persistent
-            props.ContentType = "application/json";   // nice-to-have
+            props.Persistent = true;
+            props.ContentType = "application/json";
 
             var body = Encoding.UTF8.GetBytes(json);
 
             channel.BasicPublish(
                 exchange: "",
                 routingKey: _queueName,
+                mandatory: true,                 // -> BasicReturn wenn nicht zustellbar
                 basicProperties: props,
                 body: body);
 
@@ -66,6 +78,7 @@ public class RabbitMqService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to publish OCR message to queue {Queue}", _queueName);
+            throw; // weiterwerfen, damit dein Controller sauber reagieren kann
         }
     }
 
