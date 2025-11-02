@@ -42,7 +42,7 @@ public class RabbitMqService
             using var channel = connection.CreateModel();
 
             // WICHTIG: Keine (Neu-)Deklaration!
-            // Nur passiv prüfen – wenn noch nicht vorhanden, loggen wir und publishen trotzdem.
+            // Nur passiv prÃ¼fen â€“ wenn noch nicht vorhanden, loggen wir und publishen trotzdem.
             try
             {
                 channel.QueueDeclarePassive(_queueName);

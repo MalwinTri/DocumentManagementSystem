@@ -43,38 +43,9 @@ public class DocumentsController : ControllerBase
         if (string.IsNullOrWhiteSpace(form.Title)) errors["title"] = new[] { "Title is required." };
         if (errors.Count > 0) throw new ValidationException(errors: errors);
 
-        _logger.LogInformation("Upload started for Title={Title}", form.Title);
-
-        // 1) Metadaten speichern (DB)
-        var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), ct);
-
-        // 2) Datei ins SHARED-Volume speichern (/app/files)
-        string fullPath;
-        try
-        {
-            var root = Environment.GetEnvironmentVariable("STORAGE_ROOT") ?? "/app";
-            var sub = Environment.GetEnvironmentVariable("STORAGE_DOCS_SUBFOLDER") ?? "files";
-            var folder = Path.Combine(root, sub);              // -> /app/files
-            Directory.CreateDirectory(folder);
-
-            var ext = Path.GetExtension(form.File.FileName);
-            if (string.IsNullOrWhiteSpace(ext)) ext = ".bin";
-            ext = ext.ToLowerInvariant();
-
-            // wir benennen strikt nach Id + Original-Extension
-            fullPath = Path.Combine(folder, $"{saved.Id}{ext}");
-
-            await using var stream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            await form.File.CopyToAsync(stream, ct);
-
-            _logger.LogInformation("Saved file at {Path}", fullPath);
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "File IO error for DocumentId={DocumentId}", saved.Id);
-            throw new FileStorageException("Could not persist uploaded file", "file_io_error", ex);
-        }
+        // Metadaten speichern
+        await using var fileStream = form.File?.OpenReadStream();
+        var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), fileStream, ct);
 
         // 3) Nur PDFs in die OCR-Queue schicken (REST: alles akzeptiert)
         try

@@ -16,8 +16,8 @@
 
   api:
     build:
-      context: ..                                  # Lösungs-Root
-      dockerfile: "DocumentManagementSystem/Dockerfile"  # API-Dockerfile liegt im API-Ordner
+      context: ..                                 
+      dockerfile: "DocumentManagementSystem/Dockerfile"  
     container_name: dms-api
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
@@ -59,8 +59,8 @@
 
   ocr-worker:
     build:
-      context: ..                                  # Lösungs-Root
-      dockerfile: "OCR_Worker/Dockerfile"          # Worker-Dockerfile liegt im Unterordner OCR_Worker
+      context: ..                                  
+      dockerfile: "OCR_Worker/Dockerfile"       
     container_name: dms-ocr-worker
     environment:
       RABBIT_HOST: rabbitmq
@@ -74,6 +74,22 @@
       rabbitmq:
         condition: service_healthy
     restart: unless-stopped
+
+  garage:
+    image: dxflrs/garage:v2.1.0
+    container_name: dms-garage
+    ports:
+      - "3900:3900"
+    environment:
+      GARAGE_API_KEY: garage-access-key
+      GARAGE_API_SECRET: garage-secret-key
+    volumes:
+      - garage-data:/data
+      - ./garage-config/garage.toml:/etc/garage.toml
+
+volumes:
+  dms-data:
+  garage-data:
     volumes:
       - dms-storage:/app/files   # <— shared mit der API
 

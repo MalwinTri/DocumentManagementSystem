@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using DocumentManagementSystem.Exceptions;
 using DocumentManagementSystem.DAL;
+using DocumentManagementSystem.Infrastructure.Services;
 
 namespace DocumentManagementSystem.BL.Documents;
 
@@ -13,23 +14,27 @@ public class DocumentService
     private readonly ITagRepository _tagRepo;
     private readonly ILogger<DocumentService> _logger;
     private readonly RabbitMqService _mq;
+    private readonly GarageS3Service _garageS3;
 
     public DocumentService(
         IDocumentRepository docRepo,
         ITagRepository tagRepo,
         ILogger<DocumentService> logger,
-        RabbitMqService mq)
+        RabbitMqService mq,
+        GarageS3Service garageS3)
     {
         _docRepo = docRepo;
         _tagRepo = tagRepo;
         _logger = logger;
         _mq = mq;
+        _garageS3 = garageS3;
     }
 
     public async Task<Document> CreateAsync(
         string title,
         string? description,
         List<string>? tags,
+        Stream? pdfStream, // NEU
         CancellationToken ct = default)
     {
         _logger.LogInformation("CreateAsync started. Title=\"{Title}\", IncomingTags={TagCount}", title, tags?.Count ?? 0);
@@ -80,6 +85,14 @@ public class DocumentService
         try
         {
             var added = await _docRepo.AddAsync(doc, ct);
+
+            if (pdfStream != null)
+            {
+                var key = $"{added.Id}.pdf";
+                await _garageS3.UploadPdfAsync(key, pdfStream);
+                _logger.LogInformation("PDF uploaded to Garage S3. Key={Key}", key);
+            }
+
             _logger.LogInformation("Document created successfully. DocumentId={DocumentId}", added.Id);
 
             try
@@ -91,8 +104,8 @@ public class DocumentService
                     uploadedAt = DateTime.UtcNow
                 };
 
-                //_logger.LogInformation("Enqueuing OCR message for DocumentId={DocumentId}", added.Id);
-                //_mq.SendOcrMessage(payload);
+                _logger.LogInformation("Enqueuing OCR message for DocumentId={DocumentId}", added.Id);
+                _mq.SendOcrMessage(payload);
             }
             catch (Exception ex)
             {
