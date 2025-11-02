@@ -91,8 +91,8 @@ public class DocumentService
                     uploadedAt = DateTime.UtcNow
                 };
 
-                _logger.LogInformation("Enqueuing OCR message for DocumentId={DocumentId}", added.Id);
-                _mq.SendOcrMessage(payload);
+                //_logger.LogInformation("Enqueuing OCR message for DocumentId={DocumentId}", added.Id);
+                //_mq.SendOcrMessage(payload);
             }
             catch (Exception ex)
             {

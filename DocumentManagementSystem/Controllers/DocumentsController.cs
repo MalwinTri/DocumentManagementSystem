@@ -32,37 +32,42 @@ public class DocumentsController : ControllerBase
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> Upload([FromForm] DocumentUploadForm form, CancellationToken ct)
     {
-        // ModelState-Check inkl. Logging (aus File 2)
         if (!ModelState.IsValid)
         {
             _logger.LogWarning("Upload validation failed: {ModelState}", ModelState);
             return ValidationProblem(ModelState);
         }
 
-        _logger.LogInformation("Upload started for Title={Title}", form.Title);
-
-        // Zusätzliche Validierung wie in File 1 (konsistent via ValidationException)
         var errors = new Dictionary<string, string[]>();
         if (form.File is null || form.File.Length == 0) errors["file"] = new[] { "File is required." };
         if (string.IsNullOrWhiteSpace(form.Title)) errors["title"] = new[] { "Title is required." };
         if (errors.Count > 0) throw new ValidationException(errors: errors);
 
-        // Metadaten speichern
+        _logger.LogInformation("Upload started for Title={Title}", form.Title);
+
+        // 1) Metadaten speichern (DB)
         var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), ct);
 
-        // Datei persistieren
+        // 2) Datei ins SHARED-Volume speichern (/app/files)
+        string fullPath;
         try
         {
-            var safeTitle = string.Concat(form.Title.Where(c => char.IsLetterOrDigit(c) || c == '_'));
-            var file = form.File!;
-            var extension = Path.GetExtension(file.FileName);
-            var fileName = $"{safeTitle}_{saved.Id}{extension}";
-            var dir = "files";
-            Directory.CreateDirectory(dir);
-            var filePath = Path.Combine(dir, fileName);
+            var root = Environment.GetEnvironmentVariable("STORAGE_ROOT") ?? "/app";
+            var sub = Environment.GetEnvironmentVariable("STORAGE_DOCS_SUBFOLDER") ?? "files";
+            var folder = Path.Combine(root, sub);              // -> /app/files
+            Directory.CreateDirectory(folder);
 
-            await using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
-            await file.CopyToAsync(stream, ct);
+            var ext = Path.GetExtension(form.File.FileName);
+            if (string.IsNullOrWhiteSpace(ext)) ext = ".bin";
+            ext = ext.ToLowerInvariant();
+
+            // wir benennen strikt nach Id + Original-Extension
+            fullPath = Path.Combine(folder, $"{saved.Id}{ext}");
+
+            await using var stream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            await form.File.CopyToAsync(stream, ct);
+
+            _logger.LogInformation("Saved file at {Path}", fullPath);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -71,10 +76,23 @@ public class DocumentsController : ControllerBase
             throw new FileStorageException("Could not persist uploaded file", "file_io_error", ex);
         }
 
-        // OCR-Message enqueuen
+        // 3) Nur PDFs in die OCR-Queue schicken (REST: alles akzeptiert)
         try
         {
-            _rabbitMqService.SendOcrMessage(new { DocumentId = saved.Id, FileName = saved.Title });
+            var isPdf = Path.GetExtension(fullPath).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(form.File.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase);
+
+            if (isPdf)
+            {
+                // Models.OcrJob enthält DocumentId, LocalPath, ContentType, UploadedAt
+                var job = new OcrJob(saved.Id, fullPath, "application/pdf", DateTime.UtcNow);
+                _rabbitMqService.SendOcrMessage(job);
+                _logger.LogInformation("OCR job queued for DocumentId={DocumentId}", saved.Id);
+            }
+            else
+            {
+                _logger.LogInformation("Non-PDF uploaded; skipping OCR for DocumentId={DocumentId}", saved.Id);
+            }
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -86,6 +104,7 @@ public class DocumentsController : ControllerBase
         _logger.LogInformation("Upload finished for DocumentId={DocumentId}", saved.Id);
         return CreatedAtAction(nameof(GetById), new { id = saved.Id }, DocumentMapper.ToDto(saved));
     }
+
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken ct)
