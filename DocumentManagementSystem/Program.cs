@@ -76,9 +76,6 @@ internal class Program
             var logger = app.Services.GetRequiredService<ILogger<Program>>();
             logger.LogInformation("Starting application in environment {Env}", app.Environment.EnvironmentName);
 
-            var garageS3 = app.Services.GetRequiredService<GarageS3Service>();
-            await garageS3.EnsureBucketExistsAsync();
-
             using (var scope = app.Services.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<DmsDbContext>();

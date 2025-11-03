@@ -74,6 +74,8 @@
       rabbitmq:
         condition: service_healthy
     restart: unless-stopped
+    volumes:
+      - dms-storage:/app/files   # <— shared mit dem API
 
   garage:
     image: dxflrs/garage:v2.1.0
@@ -90,9 +92,4 @@
 volumes:
   dms-data:
   garage-data:
-    volumes:
-      - dms-storage:/app/files   # <— shared mit der API
-
-volumes:
-  dms-data:
   dms-storage:

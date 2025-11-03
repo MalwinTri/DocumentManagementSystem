@@ -51,13 +51,4 @@ public class GarageS3Service
         var resp = await _client.GetObjectAsync(req);
         return resp.ResponseStream;
     }
-
-    public async Task EnsureBucketExistsAsync()
-    {
-        var buckets = await _client.ListBucketsAsync();
-        if (!buckets.Buckets.Any(b => b.BucketName == _bucket))
-        {
-            await _client.PutBucketAsync(_bucket);
-        }
-    }
 }
