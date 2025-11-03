@@ -80,16 +80,17 @@
   garage:
     image: dxflrs/garage:v2.1.0
     container_name: dms-garage
+    command: ["/garage","--config","/etc/garage.toml","server"]
     ports:
-      - "3900:3900"
-    environment:
-      GARAGE_API_KEY: garage-access-key
-      GARAGE_API_SECRET: garage-secret-key
+      - "3900:3900"         # S3 API
+      # - "3901:3901"       # optional: RPC von Host
     volumes:
-      - garage-data:/data
-      - ./garage-config/garage.toml:/etc/garage.toml
-
+      - ./garage-config/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
 volumes:
   dms-data:
-  garage-data:
   dms-storage:
+  garage-meta:
+  garage-data:
+
