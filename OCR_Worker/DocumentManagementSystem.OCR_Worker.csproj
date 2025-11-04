@@ -9,6 +9,10 @@
 	<ItemGroup>
 		<!-- Diese beiden brauchst du i.d.R. gar nicht extra, net8 bringt das mit.
          Wenn du sie behältst, nimm die 8.x-Versionen. -->
+		<PackageReference Include="AWSSDK.Core" Version="4.0.1.3" />
+		<PackageReference Include="AWSSDK.S3" Version="4.0.9.1" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.10" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.10" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.0" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
 

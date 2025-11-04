@@ -44,65 +44,41 @@ public class DocumentsController : ControllerBase
         if (errors.Count > 0) throw new ValidationException(errors: errors);
 
         _logger.LogInformation("Upload started for Title={Title}", form.Title);
-        // Metadaten speichern
-        await using var fileStream = form.File?.OpenReadStream();
+
+        // 1) Metadaten speichern & Datei zu Garage hochladen (macht dein Service)
+        await using var fileStream = form.File!.OpenReadStream();
         var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), fileStream, ct);
 
-        // 2) Datei ins SHARED-Volume speichern (/app/files)
-        string fullPath;
-        try
+        // 2) Nur PDFs für OCR einreihen (keine Filesystem-Ablage mehr!)
+        var isPdf = string.Equals(form.File.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(Path.GetExtension(form.File.FileName), ".pdf", StringComparison.OrdinalIgnoreCase);
+
+        if (isPdf)
         {
-            var root = Environment.GetEnvironmentVariable("STORAGE_ROOT") ?? "/app";
-            var sub = Environment.GetEnvironmentVariable("STORAGE_DOCS_SUBFOLDER") ?? "files";
-            var folder = Path.Combine(root, sub);              // -> /app/files
-            Directory.CreateDirectory(folder);
+            // WICHTIG: S3Key muss exakt so sein, wie der Service ihn schreibt.
+            // Falls dein Service "<Id>.pdf" verwendet (so zeigen es deine Logs), passt das:
+            var s3Key = $"{saved.Id}.pdf";
 
-            var ext = Path.GetExtension(form.File.FileName);
-            if (string.IsNullOrWhiteSpace(ext)) ext = ".bin";
-            ext = ext.ToLowerInvariant();
-
-            // wir benennen strikt nach Id + Original-Extension
-            fullPath = Path.Combine(folder, $"{saved.Id}{ext}");
-
-            await using var stream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            await form.File.CopyToAsync(stream, ct);
-
-            _logger.LogInformation("Saved file at {Path}", fullPath);
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "File IO error for DocumentId={DocumentId}", saved.Id);
-            throw new FileStorageException("Could not persist uploaded file", "file_io_error", ex);
-        }
-        // 3) Nur PDFs in die OCR-Queue schicken (REST: alles akzeptiert)
-        try
-        {
-            var isPdf = Path.GetExtension(fullPath).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(form.File.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase);
-
-            if (isPdf)
+            var job = new OcrJob
             {
-                // Models.OcrJob enthält DocumentId, LocalPath, ContentType, UploadedAt
-                var job = new OcrJob(saved.Id, fullPath, "application/pdf", DateTime.UtcNow);
-                _rabbitMqService.SendOcrMessage(job);
-                _logger.LogInformation("OCR job queued for DocumentId={DocumentId}", saved.Id);
-            }
-            else
-            {
-                _logger.LogInformation("Non-PDF uploaded; skipping OCR for DocumentId={DocumentId}", saved.Id);
-            }
+                DocumentId = saved.Id,
+                S3Key = s3Key,
+                ContentType = "application/pdf",
+                UploadedAt = DateTime.UtcNow
+            };
+
+            _rabbitMqService.SendOcrMessage(job);
+            _logger.LogInformation("OCR job queued for DocumentId={DocumentId} with S3Key={S3Key}", saved.Id, s3Key);
         }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
+        else
         {
-            _logger.LogError(ex, "Unexpected error when sending OCR message for DocumentId={DocumentId}", saved.Id);
-            throw new FileStorageException("Could not enqueue OCR job", code: "enqueue_failed", inner: ex);
+            _logger.LogInformation("Non-PDF uploaded; skipping OCR for DocumentId={DocumentId}", saved.Id);
         }
 
         _logger.LogInformation("Upload finished for DocumentId={DocumentId}", saved.Id);
         return CreatedAtAction(nameof(GetById), new { id = saved.Id }, DocumentMapper.ToDto(saved));
     }
+
 
 
     [HttpGet("{id:guid}")]

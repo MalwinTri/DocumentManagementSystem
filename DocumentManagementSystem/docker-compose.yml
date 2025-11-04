@@ -16,16 +16,13 @@
 
   api:
     build:
-      context: ..                                 
-      dockerfile: "DocumentManagementSystem/Dockerfile"  
+      context: ..                                  # Repo-Root (wichtig!)
+      dockerfile: DocumentManagementSystem/Dockerfile
     container_name: dms-api
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
-      # Dateien liegen bei dir unter /app/files -> als shared Volume mounten
-      STORAGE_ROOT: /app
-      STORAGE_DOCS_SUBFOLDER: files
-      # RabbitMQ (Publisher)
+      # Rabbit Publisher
       RABBIT_HOST: rabbitmq
       RABBIT_USER: guest
       RABBIT_PASS: guest
@@ -36,8 +33,10 @@
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    volumes:
-      - dms-storage:/app/files   # <— shared mit dem Worker
+      garage:
+        condition: service_started
+    restart: unless-stopped
+    # Keine Datei-Volumes mehr nötig
 
   ui:
     build:
@@ -46,6 +45,7 @@
     container_name: dms-ui
     ports: ["3000:80"]
     depends_on: ["api"]
+    restart: unless-stopped
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -56,41 +56,44 @@
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   ocr-worker:
     build:
-      context: ..                                  
-      dockerfile: "OCR_Worker/Dockerfile"       
+      context: ..                                  # Repo-Root
+      dockerfile: OCR_Worker/Dockerfile
     container_name: dms-ocr-worker
     environment:
+      # Rabbit Consumer
       RABBIT_HOST: rabbitmq
       RABBIT_QUEUE: ocr-queue
       RABBIT_PREFETCH: "1"
       RABBIT_ENABLE_DLQ: "true"
-      # für den Fallback-Pfad im Worker ( /app/files/<id>.pdf )
-      STORAGE_ROOT: /app
-      STORAGE_DOCS_SUBFOLDER: files
+    volumes:
+      # ⬇️ appsettings.json der API schreibgeschützt in den Worker geben
+      - ./appsettings.json:/config/appsettings.json:ro
+      # ✅ Garage-Zugang kommt aus der appsettings.json des Workers
     depends_on:
       rabbitmq:
         condition: service_healthy
+      garage:
+        condition: service_started
     restart: unless-stopped
-    volumes:
-      - dms-storage:/app/files   # <— shared mit dem API
 
   garage:
     image: dxflrs/garage:v2.1.0
     container_name: dms-garage
     command: ["/garage","--config","/etc/garage.toml","server"]
     ports:
-      - "3900:3900"         # S3 API
-      # - "3901:3901"       # optional: RPC von Host
+      - "3900:3900"        # S3 API
+      # - "3901:3901"      # optional: RPC vom Host aus
     volumes:
       - ./garage-config/garage.toml:/etc/garage.toml:ro
       - garage-meta:/var/lib/garage/meta
-      - garage-data:/var/lib/garage/data
+      - garage-data:/var/lib/garage/data               # persistente Daten
+    restart: unless-stopped
+
 volumes:
   dms-data:
-  dms-storage:
   garage-meta:
   garage-data:
-
