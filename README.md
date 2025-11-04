@@ -17,7 +17,7 @@
 
 ---
 
-## UI-Konzept und Interaktionen
+## UI-Konzept und Interaktionen (Sprint 2)
 
 Das Interface des Dokumentenmanagement Systems bietet drei Kernfunktionen:
 
@@ -53,18 +53,84 @@ Das Interface des Dokumentenmanagement Systems bietet drei Kernfunktionen:
 
 ---
 
+## Queues, Worker & Logging (Sprint 3)
+
+### Ziele
+- Integration von RabbitMQ als Messaging-System.  
+- API sendet OCR-Nachricht nach Upload.  
+- OCR-Worker empfängt und loggt Nachrichten (Proof-of-Concept).  
+- Logging & Fehlertoleranz sicherstellen.  
+- Keine HTTP-500 bei Messaging-Fehlern.
+
+---
+
+## RabbitMQ-Integration – Technische Dokumentation
+
+### Architekturüberblick
+| Komponente | Rolle |
+|-------------|-------|
+| **Queue** | `ocr-queue` |
+| **Publisher** | API (`DocumentsController → RabbitMqService`) |
+| **Consumer** | OCR-Worker (Konsolen-App / Container) |
+| **Infrastruktur** | `docker-compose.yml` enthält `rabbitmq:3-management` (Ports 5672, 15672) |
+
+---
+
+### Ablauf beim Upload (technisch)
+
+1. **Client → API**  
+   `POST /api/documents` (multipart/form-data) mit `file`, `title`, optional `description`, `tags`.
+
+2. **Validierung**  
+   `DocumentsController` prüft `ModelState` → bei Fehlern `400 ProblemDetails`.
+
+3. **Business-Logik**  
+   `DocumentService.CreateAsync`:
+   - Prüft Titel, Tags.
+   - Ruft `ITagRepository.GetOrCreateAsync` auf.
+   - Erstellt neues `Document`-Entity.
+
+4. **Persistenz (Datenbank)**  
+   - `IDocumentRepository.AddAsync(doc)` → EF Core `SaveChangesAsync()`.  
+   - Erfolgreiche Speicherung ist Voraussetzung für Queue-Publish.
+
+5. **Datei speichern**  
+   - Sicherer Name (`safeTitle_{DocumentId}.pdf`) in `files/` gespeichert.
+
+6. **Nachricht in RabbitMQ senden**  
+   - `RabbitMqService.SendOcrMessage(new { DocumentId, FileName })`.  
+   - JSON serialisiert, `ocr-queue` deklariert, persistent publish.  
+   - Publish-Fehler → **nur Log**, kein HTTP-Fehler.
+
+7. **Worker (Consumer)**  
+   - Liest `ocr-queue`.  
+   - Loggt Payload, führt `BasicAck` aus.  
+   - Proof-of-Concept (keine OCR-Verarbeitung in Sprint 3).  
+   - Später: OCR, Textspeicherung, Folge-Nachrichten.
+
+---
+
+## Logging Levels
+| Level           | Einsatz                                                |
+| --------------- | ------------------------------------------------------ |
+| **Information** | Erfolgreiche High-Level Events (Upload, Queue Publish) |
+| **Debug**       | Interne Schritte, z. B. Tag-Auflösung                  |
+| **Warning**     | Validierungswarnungen, Retry-Themen                    |
+| **Error**       | Ausnahmefälle, Fehlersituationen                       |
+
+---
+
+## Erweiterungsidee
+
+Automatisches Tagging mit GemAI
+→ Nach OCR und Textanalyse werden Dokumente automatisch mit thematischen Tags versehen (z. B. „Rechnung“, „Vertrag“, „Personalakte“).
+
+---
+
 ## Zusammenfassung
 
-- **Trennung von Backend und UI**: Erhöht Flexibilität und Wartbarkeit.
-- **Containerisierung**: Vereinfacht Setup, Testing und Deployment.
-- **Moderne UI-Technologien**: Schnelle Entwicklung, gutes Nutzererlebnis.
-- **Interaktive, nutzerfreundliche Oberfläche**: Alle Kernfunktionen sind intuitiv erreichbar.
-
-
-
-## IDEE: (für Zusatz Feature)
-
-Automatisches Tagging für Dokumente mit GemAI
-
-
-
+- Trennung von Backend und UI: Erhöht Flexibilität und Wartbarkeit.
+- Containerisierung: Vereinfacht Setup, Testing und Deployment.
+- Moderne UI-Technologien: Schnelle Entwicklung, gutes Nutzererlebnis.
+- Interaktive, nutzerfreundliche Oberfläche: Alle Kernfunktionen sind intuitiv erreichbar.
+- Asynchrone Verarbeitung (RabbitMQ): Grundlage für skalierbare AI- & OCR-Prozesse.
