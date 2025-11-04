@@ -8,10 +8,16 @@
 
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="4.0.9.1" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.9.1" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.10" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.9" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.10" />
 	<PackageReference Include="RabbitMQ.Client" Version="6.6.0" />
+	<PackageReference Include="Tesseract" Version="5.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DocumentManagementSystem.Models\DocumentManagementSystem.Models.csproj" />
   </ItemGroup>
 
 </Project>

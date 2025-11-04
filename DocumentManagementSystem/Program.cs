@@ -1,9 +1,12 @@
 using Serilog;
+using System.Collections.Generic;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
+
 using DocumentManagementSystem.Database;
 using DocumentManagementSystem.Database.Repositories;
 using DocumentManagementSystem.Services;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.OpenApi.Models;
 using DocumentManagementSystem.BL.Documents;
 using DocumentManagementSystem.Middleware;
 using DocumentManagementSystem.DAL;
@@ -14,12 +17,12 @@ internal class Program
     private static async Task Main(string[] args)
     {
         Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(new ConfigurationBuilder()
-        .AddJsonFile("appsettings.json", optional: true)
-        .AddEnvironmentVariables()
-        .Build())
-    .Enrich.FromLogContext()
-    .CreateLogger();
+            .ReadFrom.Configuration(new ConfigurationBuilder()
+                .AddJsonFile("appsettings.json", optional: true)
+                .AddEnvironmentVariables()
+                .Build())
+            .Enrich.FromLogContext()
+            .CreateLogger();
 
         try
         {
@@ -31,6 +34,24 @@ internal class Program
 
             builder.Host.UseSerilog();
 
+            // ---- Normalize/Map config keys so either GARAGE_S3_* or S3_* works ----
+            var map = new Dictionary<string, string?>();
+            void Map(string target, string source)
+            {
+                var src = builder.Configuration[source];
+                var dst = builder.Configuration[target];
+                if (!string.IsNullOrWhiteSpace(src) && string.IsNullOrWhiteSpace(dst))
+                    map[target] = src;
+            }
+            Map("S3_ENDPOINT", "GARAGE_S3_ENDPOINT");
+            Map("S3_REGION", "GARAGE_S3_REGION");
+            Map("S3_BUCKET", "GARAGE_S3_BUCKET");
+            Map("S3_ACCESS_KEY", "GARAGE_S3_ACCESS_KEY");
+            Map("S3_SECRET_KEY", "GARAGE_S3_SECRET_KEY");
+            if (map.Count > 0) builder.Configuration.AddInMemoryCollection(map);
+            // ----------------------------------------------------------------------
+
+            // ---------- Database ----------
             var connectionString = builder.Configuration.GetConnectionString("Default");
             builder.Services.AddDbContext<DmsDbContext>(opt => opt.UseNpgsql(connectionString));
 
@@ -38,31 +59,42 @@ internal class Program
             builder.Services.AddScoped<ITagRepository, TagRepository>();
             builder.Services.AddScoped<DocumentService>();
 
-            // === RabbitMQ: RabbitMqService für DI registrieren ===
-            var rabbitHost = builder.Configuration["RABBIT_HOST"] ?? "rabbitmq";
-            var rabbitQueue = builder.Configuration["RABBIT_QUEUE"] ?? "ocr-queue"; // optional, falls du es später brauchst
-                                                                                    // RabbitMQ Service aus DI mit Logger + Host aus Config
+            // ---------- RabbitMQ ----------
             builder.Services.AddSingleton(sp =>
             {
                 var host = builder.Configuration["RABBIT_HOST"] ?? "rabbitmq";
                 var logger = sp.GetRequiredService<ILogger<RabbitMqService>>();
                 return new RabbitMqService(logger, host);
             });
-            // =====================================================
+            // Queue-Name zentral in Config, Default wie im Worker
+            if (string.IsNullOrWhiteSpace(builder.Configuration["RABBIT_QUEUE"]))
+                builder.Configuration["RABBIT_QUEUE"] = "documents.ocr";
 
+            // ---------- S3 / Garage ----------
+            // Dein GarageS3Service liest die Werte aus IConfiguration (S3_* Keys).
             builder.Services.AddSingleton<GarageS3Service>();
 
-            const string AllowFrontend = "_allowFrontend";
-
-            builder.Services.AddCors(opts =>
+            // ---------- Upload size (z. B. 100 MB PDFs zulassen) ----------
+            builder.Services.Configure<FormOptions>(o =>
             {
-                opts.AddPolicy(AllowFrontend, p => p
-                    .WithOrigins("http://localhost:5173", "http://localhost:3000")
-                    .AllowAnyHeader()
-                    .AllowAnyMethod()
-                );
+                o.MultipartBodyLengthLimit = 100 * 1024 * 1024; // 100 MB
             });
 
+            // ---------- CORS ----------
+            const string AllowFrontend = "_allowFrontend";
+            builder.Services.AddCors(opts =>
+            {
+                var origins = (builder.Configuration["FRONTEND_ORIGINS"]
+                               ?? "http://localhost:5173;http://localhost:3000")
+                              .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                opts.AddPolicy(AllowFrontend, p => p
+                    .WithOrigins(origins)
+                    .AllowAnyHeader()
+                    .AllowAnyMethod());
+            });
+
+            // ---------- MVC + Swagger ----------
             builder.Services.AddControllers();
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(c =>
@@ -76,6 +108,7 @@ internal class Program
             var logger = app.Services.GetRequiredService<ILogger<Program>>();
             logger.LogInformation("Starting application in environment {Env}", app.Environment.EnvironmentName);
 
+            // ---------- DB Migrations mit Retry ----------
             using (var scope = app.Services.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<DmsDbContext>();
@@ -116,9 +149,10 @@ internal class Program
             }
 
             app.UseMiddleware<ErrorHandlingMiddleware>();
-
             app.UseAuthorization();
+
             app.MapControllers();
+
             logger.LogInformation("Application started and listening");
             app.Run();
         }

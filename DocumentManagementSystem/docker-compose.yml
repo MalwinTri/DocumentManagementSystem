@@ -64,6 +64,7 @@
       dockerfile: OCR_Worker/Dockerfile
     container_name: dms-ocr-worker
     environment:
+      TESSDATA_PREFIX: /usr/share/tesseract-ocr/5/tessdata
       # Rabbit Consumer
       RABBIT_HOST: rabbitmq
       RABBIT_QUEUE: ocr-queue

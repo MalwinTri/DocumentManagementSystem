@@ -9,6 +9,9 @@ using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
+// ------------------------------------------------------------
+// Logging
+// ------------------------------------------------------------
 var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole(o =>
 {
     o.SingleLine = true;
@@ -16,44 +19,60 @@ var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole(o =
 }));
 var logger = loggerFactory.CreateLogger("OcrWorker");
 
-// ---- Konfiguration: ENV > JSON (/config/appsettings.json) ----
+
 var config = new ConfigurationBuilder()
     .AddJsonFile("/config/appsettings.json", optional: true, reloadOnChange: false)
     .AddEnvironmentVariables()
     .Build();
 
-string GetEnv(string name, string? def = null, bool required = false)
+static string? Env(string name) => Environment.GetEnvironmentVariable(name);
+static string GetEnv(string name, string? def = null, bool required = false)
 {
-    var v = Environment.GetEnvironmentVariable(name) ?? def;
+    var v = Env(name) ?? def;
     if (required && string.IsNullOrWhiteSpace(v))
         throw new ArgumentNullException(name);
     return v!;
 }
-
 string GetS3(string env, string jsonKey, bool required = true)
 {
-    var v = Environment.GetEnvironmentVariable(env) ?? config[jsonKey];
+    var v = Env(env) ?? config[jsonKey];
     if (required && string.IsNullOrWhiteSpace(v))
         throw new ArgumentNullException(env);
     return v!;
 }
 
-// --- Rabbit ---
-var rabbitHost = GetEnv("RABBIT_HOST", "rabbitmq");
-var rabbitQueue = GetEnv("RABBIT_QUEUE", "ocr-queue");
-var prefetchStr = GetEnv("RABBIT_PREFETCH", "1");
-var enableDlq = GetEnv("RABBIT_ENABLE_DLQ", "true")
-                    .Equals("true", StringComparison.OrdinalIgnoreCase);
+// ------------------------------------------------------------
+// RabbitMQ
+// ------------------------------------------------------------
+var rabbitHost = GetEnv("RABBIT_HOST", config["Rabbit:Host"] ?? "rabbitmq");
+var rabbitQueue = GetEnv("RABBIT_QUEUE", config["Rabbit:Queue"] ?? "ocr-queue");
+var rabbitUser = GetEnv("RABBIT_USER", config["Rabbit:User"] ?? "guest");
+var rabbitPass = GetEnv("RABBIT_PASS", config["Rabbit:Pass"] ?? "guest");
+var prefetchStr = GetEnv("RABBIT_PREFETCH", config["Rabbit:Prefetch"] ?? "1");
+var enableDlq = (GetEnv("RABBIT_ENABLE_DLQ", config["Rabbit:RequeueOnError"]) ?? "true")
+                        .Equals("true", StringComparison.OrdinalIgnoreCase);
 ushort prefetch = ushort.TryParse(prefetchStr, out var p) ? p : (ushort)1;
 
-// --- Garage S3 (ENV hat Vorrang, sonst JSON GarageS3:*) ---
+// ------------------------------------------------------------
+// Garage S3 
+// ------------------------------------------------------------
 var s3Endpoint = GetS3("GARAGE_S3_ENDPOINT", "GarageS3:Endpoint");
 var s3Region = GetS3("GARAGE_S3_REGION", "GarageS3:Region");
 var s3Bucket = GetS3("GARAGE_S3_BUCKET", "GarageS3:Bucket");
 var s3AccessKey = GetS3("GARAGE_S3_ACCESS_KEY", "GarageS3:AccessKey");
 var s3SecretKey = GetS3("GARAGE_S3_SECRET_KEY", "GarageS3:SecretKey");
 
-// S3-Client für Garage (Signature V4, path-style, kein chunked, unsigned payload)
+// ------------------------------------------------------------
+// OCR-Optionen
+// ------------------------------------------------------------
+var ocrLang = config["Ocr:Language"] ?? Env("OCR_LANG") ?? "eng+deu";
+var tessdataPrefix = config["Ocr:TessdataPrefix"] ?? Env("TESSDATA_PREFIX"); // optional
+var ocrDpiStr = config["Ocr:Dpi"] ?? Env("OCR_DPI") ?? "300";
+var ocrDpi = int.TryParse(ocrDpiStr, out var dpi) ? dpi : 300;
+
+// ------------------------------------------------------------
+// S3-Client
+// ------------------------------------------------------------
 var credentials = new BasicAWSCredentials(s3AccessKey, s3SecretKey);
 var s3Config = new AmazonS3Config
 {
@@ -64,14 +83,14 @@ var s3Config = new AmazonS3Config
 };
 IAmazonS3 s3 = new AmazonS3Client(credentials, s3Config);
 
-logger.LogInformation(
-    "OCR Worker starting. Rabbit={Rabbit} Queue={Queue} Prefetch={Prefetch} DLQ={DLQ} S3={S3} Bucket={Bucket}",
-    rabbitHost, rabbitQueue, prefetch, enableDlq, s3Endpoint, s3Bucket);
-
-// ---------- RabbitMQ 6.x ----------
+// ------------------------------------------------------------
+// RabbitMQ 6.x
+// ------------------------------------------------------------
 var factory = new ConnectionFactory
 {
     HostName = rabbitHost,
+    UserName = rabbitUser,
+    Password = rabbitPass,
     DispatchConsumersAsync = true
 };
 using var conn = factory.CreateConnection();
@@ -98,6 +117,12 @@ if (enableDlq)
 ch.QueueDeclare(queue: rabbitQueue, durable: true, exclusive: false, autoDelete: false, arguments: queueArgs);
 ch.BasicQos(0, prefetchCount: prefetch, global: false);
 
+logger.LogInformation("OCR Worker starting. Rabbit={Host} Queue={Queue} Prefetch={Prefetch} DLQ={DLQ} S3={S3} Bucket={Bucket} Lang={Lang} DPI={Dpi}",
+    rabbitHost, rabbitQueue, prefetch, enableDlq, s3Endpoint, s3Bucket, ocrLang, ocrDpi);
+
+await LogCliVersion("gs", "-v", "Ghostscript", logger);
+await LogCliVersion("tesseract", "--version", "Tesseract", logger);
+
 var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 var consumer = new AsyncEventingBasicConsumer(ch);
 
@@ -119,10 +144,10 @@ consumer.Received += async (_, ea) =>
         logger.LogInformation("Received OCR job: DocumentId={Id}, S3Key={Key}", msg.DocumentId, msg.S3Key);
 
         // 1) PDF aus Garage S3 holen
-        using var pdfStream = await DownloadPdfAsync(s3, s3Bucket, msg.S3Key);
+        await using var pdfStream = await DownloadPdfAsync(s3, s3Bucket, msg.S3Key);
 
         // 2) OCR -> Text
-        var text = await OcrPdfStreamAsync(pdfStream);
+        var text = await OcrPdfStreamAsync(pdfStream, ocrLang, ocrDpi, tessdataPrefix, logger);
 
         // 3) Text zurück ins S3 (gleicher Bucket, gleiche Id, .txt)
         var txtKey = System.IO.Path.ChangeExtension(msg.S3Key, ".txt")!;
@@ -143,17 +168,17 @@ consumer.Received += async (_, ea) =>
 ch.BasicConsume(queue: rabbitQueue, autoAck: false, consumer: consumer);
 logger.LogInformation("OCR Worker ready.");
 
-// graceful shutdown
+// shutdown
 var tcs = new TaskCompletionSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; tcs.TrySetResult(); };
 AppDomain.CurrentDomain.ProcessExit += (_, __) => tcs.TrySetResult();
 await tcs.Task;
 
-// ---------- Helpers ----------
+// ======================= Helpers =======================
 
 static async Task<Stream> DownloadPdfAsync(IAmazonS3 s3, string bucket, string key)
 {
-    var resp = await s3.GetObjectAsync(new GetObjectRequest
+    using var resp = await s3.GetObjectAsync(new GetObjectRequest
     {
         BucketName = bucket,
         Key = key
@@ -167,14 +192,14 @@ static async Task<Stream> DownloadPdfAsync(IAmazonS3 s3, string bucket, string k
 static async Task UploadTextAsync(IAmazonS3 s3, string bucket, string key, string text)
 {
     var bytes = Encoding.UTF8.GetBytes(text);
-    using var ms = new MemoryStream(bytes);
+    await using var ms = new MemoryStream(bytes);
 
     var put = new PutObjectRequest
     {
         BucketName = bucket,
         Key = key,
         InputStream = ms,
-        ContentType = "text/plain",
+        ContentType = "text/plain; charset=utf-8",
         UseChunkEncoding = false
     };
     put.Headers.ContentLength = ms.Length;
@@ -182,8 +207,7 @@ static async Task UploadTextAsync(IAmazonS3 s3, string bucket, string key, strin
     await s3.PutObjectAsync(put);
 }
 
-// OCR aus Stream: speichere kurz als PDF -> gs -> tesseract (wie gehabt)
-static async Task<string> OcrPdfStreamAsync(Stream pdfStream)
+static async Task<string> OcrPdfStreamAsync(Stream pdfStream, string lang, int dpi, string? tessdataPrefix, ILogger logger)
 {
     var work = Directory.CreateTempSubdirectory("ocr");
     var pdfPath = Path.Combine(work.FullName, "input.pdf");
@@ -192,12 +216,18 @@ static async Task<string> OcrPdfStreamAsync(Stream pdfStream)
     var tiffPattern = Path.Combine(work.FullName, "page-%03d.tiff");
     try
     {
-        await RunCli("gs", $"-q -dNOPAUSE -dBATCH -sDEVICE=tiffgray -r300 -sOutputFile={tiffPattern} \"{pdfPath}\"");
+        // PDF -> TIFF (grau, 300dpi) via Ghostscript
+        await RunCli("gs", $"-q -dNOPAUSE -dBATCH -sDEVICE=tiffgray -r{dpi} -sOutputFile=\"{tiffPattern}\" \"{pdfPath}\"");
 
         var sb = new StringBuilder();
         foreach (var tiff in Directory.GetFiles(work.FullName, "page-*.tiff").OrderBy(x => x))
         {
-            var pageText = await RunCli("tesseract", $"\"{tiff}\" stdout -l deu+eng --dpi 300");
+            // Tesseract: ggf. TESSDATA_PREFIX setzen
+            var env = new Dictionary<string, string>();
+            if (!string.IsNullOrWhiteSpace(tessdataPrefix))
+                env["TESSDATA_PREFIX"] = tessdataPrefix;
+
+            var pageText = await RunCli("tesseract", $"\"{tiff}\" stdout -l {lang} --dpi {dpi}", env);
             sb.AppendLine(pageText);
         }
         return sb.ToString().Trim();
@@ -208,7 +238,7 @@ static async Task<string> OcrPdfStreamAsync(Stream pdfStream)
     }
 }
 
-static async Task<string> RunCli(string file, string args)
+static async Task<string> RunCli(string file, string args, IDictionary<string, string>? extraEnv = null)
 {
     var psi = new ProcessStartInfo(file, args)
     {
@@ -216,12 +246,29 @@ static async Task<string> RunCli(string file, string args)
         RedirectStandardError = true,
         UseShellExecute = false
     };
+    if (extraEnv != null)
+        foreach (var kv in extraEnv) psi.Environment[kv.Key] = kv.Value;
+
     using var p = Process.Start(psi)!;
     var stdout = await p.StandardOutput.ReadToEndAsync();
     var stderr = await p.StandardError.ReadToEndAsync();
     await p.WaitForExitAsync();
     if (p.ExitCode != 0) throw new InvalidOperationException($"{file} failed: {stderr}");
     return stdout;
+}
+
+static async Task LogCliVersion(string exe, string arg, string label, ILogger logger)
+{
+    try
+    {
+        var output = await RunCli(exe, arg);
+        var first = output.Split('\n').FirstOrDefault()?.Trim();
+        logger.LogInformation("{Label}: {Line}", label, first);
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "{Label} not available or failed to run", label);
+    }
 }
 
 // Nachricht (API sendet DocumentId + S3Key)

@@ -20,20 +20,18 @@ namespace DocumentManagementSystem.Infrastructure.Services
             var accessKey = section["AccessKey"] ?? throw new ArgumentNullException("GarageS3:AccessKey");
             var secretKey = section["SecretKey"] ?? throw new ArgumentNullException("GarageS3:SecretKey");
             _bucket = section["Bucket"] ?? throw new ArgumentNullException("GarageS3:Bucket");
-            var region = section["Region"] ?? "garage";   // muss zu s3_region in garage.toml passen
+            var region = section["Region"] ?? "garage";   
 
             var credentials = new BasicAWSCredentials(accessKey, secretKey);
 
             var s3Config = new AmazonS3Config
             {
-                ServiceURL = endpoint,                                // z.B. http://garage:3900
+                ServiceURL = endpoint,                                
                 UseHttp = endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase),
-                ForcePathStyle = true,                                // /bucket/key statt bucket.host
-                AuthenticationRegion = region                         // "garage" (oder was in garage.toml steht)
+                ForcePathStyle = true,                                
+                AuthenticationRegion = region                         
             };
 
-            // optional (falls vorhanden in deiner SDK-Version; sonst einfach weglassen):
-            // Amazon.S3.Util.AWSConfigsS3.UseSignatureVersion4 = true;
 
             _client = new AmazonS3Client(credentials, s3Config);
         }
@@ -49,12 +47,12 @@ namespace DocumentManagementSystem.Infrastructure.Services
                 Key = key,
                 InputStream = pdfStream,
                 ContentType = "application/pdf",
-                UseChunkEncoding = false   // <-- wichtig: kein aws-chunked
+                UseChunkEncoding = false   
             };
 
             if (pdfStream.CanSeek)
             {
-                req.Headers.ContentLength = pdfStream.Length; // feste Länge helfen Signaturproblemen vorzubeugen
+                req.Headers.ContentLength = pdfStream.Length; 
             }
 
             await _client.PutObjectAsync(req);

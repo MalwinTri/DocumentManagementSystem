@@ -11,7 +11,6 @@ public class RabbitMqService
     private readonly ConnectionFactory _factory;
     private readonly string _queueName;
 
-    // Defaults passend zur docker-compose (guest/guest, queue "ocr-queue")
     public RabbitMqService(
         ILogger<RabbitMqService> logger,
         string hostName = "rabbitmq",
@@ -41,8 +40,6 @@ public class RabbitMqService
             using var connection = _factory.CreateConnection();
             using var channel = connection.CreateModel();
 
-            // WICHTIG: Keine (Neu-)Deklaration!
-            // Nur passiv prüfen – wenn noch nicht vorhanden, loggen wir und publishen trotzdem.
             try
             {
                 channel.QueueDeclarePassive(_queueName);
@@ -52,7 +49,6 @@ public class RabbitMqService
                 _logger.LogWarning("Queue {Queue} not found yet (likely before worker init). Publishing anyway.", _queueName);
             }
 
-            // optional: Unroutable-Logging (falls Queue wirklich nicht existiert)
             channel.BasicReturn += (_, args) =>
             {
                 _logger.LogError(
@@ -69,7 +65,7 @@ public class RabbitMqService
             channel.BasicPublish(
                 exchange: "",
                 routingKey: _queueName,
-                mandatory: true,                 // -> BasicReturn wenn nicht zustellbar
+                mandatory: true,                
                 basicProperties: props,
                 body: body);
 
@@ -78,7 +74,7 @@ public class RabbitMqService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to publish OCR message to queue {Queue}", _queueName);
-            throw; // weiterwerfen, damit dein Controller sauber reagieren kann
+            throw; 
         }
     }
 

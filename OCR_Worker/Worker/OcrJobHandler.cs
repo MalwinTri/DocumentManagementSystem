@@ -5,79 +5,94 @@ using Amazon.S3.Model;
 using DocumentManagementSystem.Models;
 using DocumentManagementSystem.OCR_Worker.OCR;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace DocumentManagementSystem.OCR_Worker.Worker;
 
-public class OcrJobHandler
+public sealed class OcrJobHandler
 {
     private readonly IOcrEngine _ocr;
     private readonly ILogger<OcrJobHandler> _log;
-
     private readonly IAmazonS3 _s3;
     private readonly string _bucket;
 
-    public OcrJobHandler(IOcrEngine ocr, ILogger<OcrJobHandler> log)
+    public OcrJobHandler(
+        IOcrEngine ocr,
+        ILogger<OcrJobHandler> log,
+        IOptions<GarageS3Options> s3opts)
     {
         _ocr = ocr;
         _log = log;
 
-        var endpoint = Required("GARAGE_S3_ENDPOINT").TrimEnd('/');
-        var region = Env("GARAGE_S3_REGION") ?? "garage";
-        _bucket = Required("GARAGE_S3_BUCKET");
-        var accessKey = Required("GARAGE_S3_ACCESS_KEY");
-        var secretKey = Required("GARAGE_S3_SECRET_KEY");
+        var o = s3opts.Value ?? throw new InvalidOperationException("GarageS3 options missing");
+
+        _bucket = string.IsNullOrWhiteSpace(o.Bucket) ? "documents" : o.Bucket;
 
         var cfg = new AmazonS3Config
         {
-            ServiceURL = endpoint,
+            ServiceURL = (o.Endpoint ?? throw new InvalidOperationException("GarageS3:Endpoint missing")).TrimEnd('/'),
+            AuthenticationRegion = string.IsNullOrWhiteSpace(o.Region) ? "garage" : o.Region,
             ForcePathStyle = true,
-            AuthenticationRegion = region
+            UseHttp = o.Endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
         };
-        _s3 = new AmazonS3Client(new BasicAWSCredentials(accessKey, secretKey), cfg);
+
+        if (string.IsNullOrWhiteSpace(o.AccessKey) || string.IsNullOrWhiteSpace(o.SecretKey))
+            throw new InvalidOperationException("GarageS3:AccessKey/SecretKey missing");
+
+        _s3 = new AmazonS3Client(new BasicAWSCredentials(o.AccessKey, o.SecretKey), cfg);
     }
 
     public async Task HandleAsync(OcrJob job, CancellationToken ct)
     {
-        var pdfKey = $"{job.DocumentId}.pdf";
-        var txtKey = $"{job.DocumentId}.txt";
+        // Prefer S3Key from message; fallback to {DocumentId}.pdf
+        var pdfKey = !string.IsNullOrWhiteSpace(job.S3Key) ? job.S3Key : $"{job.DocumentId}.pdf";
+        var txtKey = System.IO.Path.ChangeExtension(pdfKey, ".txt")!;
 
-        _log.LogInformation("Download from Garage: s3://{Bucket}/{Key}", _bucket, pdfKey);
-
-        using var get = await _s3.GetObjectAsync(new GetObjectRequest
+        try
         {
-            BucketName = _bucket,
-            Key = pdfKey
-        }, ct);
+            _log.LogInformation("Downloading: s3://{Bucket}/{Key}", _bucket, pdfKey);
 
-        await using var pdfMem = new MemoryStream();
-        await get.ResponseStream.CopyToAsync(pdfMem, ct);
-        pdfMem.Position = 0;
+            using var get = await _s3.GetObjectAsync(new GetObjectRequest
+            {
+                BucketName = _bucket,
+                Key = pdfKey
+            }, ct);
 
-        // OCR
-        var text = await _ocr.ExtractTextAsync(pdfMem, ct);
+            // Direkt mit ResponseStream -> OCR
+            var text = await _ocr.ExtractTextAsync(get.ResponseStream, ct);
 
-        // Upload .txt zurück nach Garage (mit ContentLength => kein chunked)
-        var bytes = Encoding.UTF8.GetBytes(text);
-        await using var txtStream = new MemoryStream(bytes);
+            // Upload .txt (fixe Länge, kein Chunked)
+            var bytes = Encoding.UTF8.GetBytes(text);
+            await using var txtStream = new MemoryStream(bytes);
 
-        var put = new PutObjectRequest
+            var put = new PutObjectRequest
+            {
+                BucketName = _bucket,
+                Key = txtKey,
+                InputStream = txtStream,
+                ContentType = "text/plain; charset=utf-8",
+                UseChunkEncoding = false
+            };
+            put.Headers.ContentLength = txtStream.Length;
+
+            await _s3.PutObjectAsync(put, ct);
+
+            _log.LogInformation("Uploaded OCR result: s3://{Bucket}/{Key} (len={Len})",
+                _bucket, txtKey, bytes.Length);
+        }
+        catch (AmazonS3Exception s3ex) when (s3ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            BucketName = _bucket,
-            Key = txtKey,
-            InputStream = txtStream,
-            ContentType = "text/plain; charset=utf-8"
-        };
-        put.Headers.ContentLength = txtStream.Length;
-
-        await _s3.PutObjectAsync(put, ct);
-
-        _log.LogInformation("Uploaded OCR result: s3://{Bucket}/{Key} (len={Len})",
-            _bucket, txtKey, bytes.Length);
+            _log.LogWarning("PDF not found: s3://{Bucket}/{Key}", _bucket, pdfKey);
+            throw;
+        }
     }
+}
 
-    private static string Required(string name) =>
-        Environment.GetEnvironmentVariable(name)
-        ?? throw new InvalidOperationException($"Missing environment variable: {name}");
-
-    private static string? Env(string name) => Environment.GetEnvironmentVariable(name);
+public sealed class GarageS3Options
+{
+    public string Endpoint { get; set; } = "";
+    public string Region { get; set; } = "garage";
+    public string Bucket { get; set; } = "documents";
+    public string AccessKey { get; set; } = "";
+    public string SecretKey { get; set; } = "";
 }
