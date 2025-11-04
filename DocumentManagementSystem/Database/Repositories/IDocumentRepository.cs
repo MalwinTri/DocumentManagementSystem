@@ -1,6 +1,6 @@
 ﻿using DocumentManagementSystem.Models;
 
-namespace DocumentManagementSystem.DAL;
+namespace DocumentManagementSystem.Database.Repositories;
 
 public interface IDocumentRepository
 {

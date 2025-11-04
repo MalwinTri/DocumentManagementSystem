@@ -1,12 +1,9 @@
-﻿using DocumentManagementSystem.BL.Documents;
-using DocumentManagementSystem.Dto;
+﻿using DocumentManagementSystem.Dto;
 using DocumentManagementSystem.Exceptions;
-using DocumentManagementSystem.Infrastructure.Exceptions;
 using DocumentManagementSystem.Mapping;
 using DocumentManagementSystem.Models;
 using DocumentManagementSystem.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 
 namespace DocumentManagementSystem.Controllers;
 
@@ -39,44 +36,16 @@ public class DocumentsController : ControllerBase
             return ValidationProblem(ModelState);
         }
 
+        _logger.LogInformation("Upload started for Title={Title}", form.Title);
+
+        // Zusätzliche Validierung wie in File 1 (konsistent via ValidationException)
         var errors = new Dictionary<string, string[]>();
         if (form.File is null || form.File.Length == 0) errors["file"] = new[] { "File is required." };
         if (string.IsNullOrWhiteSpace(form.Title)) errors["title"] = new[] { "Title is required." };
         if (errors.Count > 0) throw new ValidationException(errors: errors);
 
-        _logger.LogInformation("Upload started for Title={Title}", form.Title);
-
-        // 1) Metadaten speichern & Datei zu Garage hochladen (macht dein Service)
-        await using var fileStream = form.File!.OpenReadStream();
-        var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), fileStream, ct);
-
-        // 2) Nur PDFs für OCR einreihen (keine Filesystem-Ablage mehr!)
-        var isPdf = string.Equals(form.File.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(Path.GetExtension(form.File.FileName), ".pdf", StringComparison.OrdinalIgnoreCase);
-
-        if (isPdf)
-        {
-            // WICHTIG: S3Key muss exakt so sein, wie der Service ihn schreibt.
-            // Falls dein Service "<Id>.pdf" verwendet (so zeigen es deine Logs), passt das:
-            var s3Key = $"{saved.Id}.pdf";
-
-            var job = new OcrJob
-            {
-                DocumentId = saved.Id,
-                S3Key = s3Key,
-                ContentType = "application/pdf",
-                UploadedAt = DateTime.UtcNow
-            };
-
-            _rabbitMqService.SendOcrMessage(job);
-            _logger.LogInformation("OCR job queued for DocumentId={DocumentId} with S3Key={S3Key}", saved.Id, s3Key);
-        }
-        else
-        {
-            _logger.LogInformation("Non-PDF uploaded; skipping OCR for DocumentId={DocumentId}", saved.Id);
-        }
-
-        _logger.LogInformation("Upload finished for DocumentId={DocumentId}", saved.Id);
+        // Metadaten speichern
+        var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), ct);
 
         // Datei persistieren
         try
@@ -115,14 +84,12 @@ public class DocumentsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = saved.Id }, DocumentMapper.ToDto(saved));
     }
 
-
-
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken ct)
     {
         var d = await _service.GetAsync(id, ct);
-        var doc = d ?? throw NotFoundException.For<Document>(id);
-        return Ok(DocumentMapper.ToDto(doc));
+        if (d is null) throw NotFoundException.For<Document>(id);
+        return Ok(DocumentMapper.ToDto(d));
     }
 
     [HttpDelete("{id:guid}")]
@@ -166,12 +133,9 @@ public class DocumentsController : ControllerBase
         if (dto is null) throw new ValidationException(detail: "Body is required");
 
         var updated = await _service.UpdateAsync(id, dto.Title, dto.Description, dto.Tags ?? new(), ct);
-
-        var doc = updated ?? throw NotFoundException.For<Document>(id);
-
-        return Ok(DocumentMapper.ToDto(doc));
+        if (updated is null) throw NotFoundException.For<Document>(id);
+        return Ok(DocumentMapper.ToDto(updated));
     }
-
 
     // Optional als Alias:
     [HttpPut("{id:guid}")]
