@@ -1,33 +1,40 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using DocumentManagementSystem.Database.Repositories;
-using DocumentManagementSystem.Exceptions;
+﻿using DocumentManagementSystem.Services;
 using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using DocumentManagementSystem.Exceptions;
+using DocumentManagementSystem.DAL;
+using DocumentManagementSystem.Infrastructure.Services;
 
-namespace DocumentManagementSystem.Services;
+namespace DocumentManagementSystem.BL.Documents;
 
 public class DocumentService
 {
     private readonly IDocumentRepository _docRepo;
     private readonly ITagRepository _tagRepo;
     private readonly ILogger<DocumentService> _logger;
+    private readonly RabbitMqService _mq;
+    private readonly GarageS3Service _garageS3;
 
-    public DocumentService(IDocumentRepository docRepo, ITagRepository tagRepo, ILogger<DocumentService> logger)
+    public DocumentService(
+        IDocumentRepository docRepo,
+        ITagRepository tagRepo,
+        ILogger<DocumentService> logger,
+        RabbitMqService mq,
+        GarageS3Service garageS3)
     {
         _docRepo = docRepo;
         _tagRepo = tagRepo;
         _logger = logger;
+        _mq = mq;
+        _garageS3 = garageS3;
     }
 
     public async Task<Document> CreateAsync(
         string title,
         string? description,
         List<string>? tags,
+        Stream? pdfStream, // NEU
         CancellationToken ct = default)
     {
         _logger.LogInformation("CreateAsync started. Title=\"{Title}\", IncomingTags={TagCount}", title, tags?.Count ?? 0);
@@ -78,7 +85,33 @@ public class DocumentService
         try
         {
             var added = await _docRepo.AddAsync(doc, ct);
+
+            if (pdfStream != null)
+            {
+                var key = $"{added.Id}.pdf";
+                await _garageS3.UploadPdfAsync(key, pdfStream);
+                _logger.LogInformation("PDF uploaded to Garage S3. Key={Key}", key);
+            }
+
             _logger.LogInformation("Document created successfully. DocumentId={DocumentId}", added.Id);
+
+            try
+            {
+                var payload = new
+                {
+                    documentId = added.Id,
+                    title = added.Title,
+                    uploadedAt = DateTime.UtcNow
+                };
+
+                _logger.LogInformation("Enqueuing OCR message for DocumentId={DocumentId}", added.Id);
+                _mq.SendOcrMessage(payload);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to enqueue OCR message for DocumentId={DocumentId}", added.Id);
+            }
+
             return added;
         }
         catch (Exception ex)

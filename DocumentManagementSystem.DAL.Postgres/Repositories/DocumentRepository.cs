@@ -1,8 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
+﻿using DocumentManagementSystem.DAL;
+using DocumentManagementSystem.DAL.Postgres.Exceptions;
 using DocumentManagementSystem.Exceptions;
 using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
@@ -52,7 +49,6 @@ public class DocumentRepository(DmsDbContext db, ILogger<DocumentRepository> log
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
     {
-        // EF Core FindAsync erwartet object?[] keyValues
         var entity = await _db.Documents.FindAsync(new object?[] { id }, ct);
         if (entity is null)
         {
@@ -100,7 +96,6 @@ public class DocumentRepository(DmsDbContext db, ILogger<DocumentRepository> log
         {
             await _db.SaveChangesAsync(ct);
         }
-        // Postgres: 23505 = unique_violation
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException pg && pg.SqlState == PostgresErrorCodes.UniqueViolation)
         {
             throw new UniqueConstraintViolationException(

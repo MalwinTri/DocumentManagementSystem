@@ -1,6 +1,6 @@
 ﻿using DocumentManagementSystem.Models;
 
-namespace DocumentManagementSystem.Database.Repositories;
+namespace DocumentManagementSystem.DAL;
 
 public interface ITagRepository
 {

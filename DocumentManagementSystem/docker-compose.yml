@@ -6,10 +6,8 @@
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: dms
-    ports:
-      - "5433:5432"
-    volumes:
-      - dms-data:/var/lib/postgresql/data
+    ports: ["5433:5432"]
+    volumes: ["dms-data:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d dms"]
       interval: 5s
@@ -18,39 +16,85 @@
 
   api:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..                                  # Repo-Root (wichtig!)
+      dockerfile: DocumentManagementSystem/Dockerfile
     container_name: dms-api
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
-    ports:
-      - "8080:8080"
+      # Rabbit Publisher
+      RABBIT_HOST: rabbitmq
+      RABBIT_USER: guest
+      RABBIT_PASS: guest
+      RABBIT_QUEUE: ocr-queue
+    ports: ["8080:8080"]
     depends_on:
       db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      garage:
+        condition: service_started
+    restart: unless-stopped
+    # Keine Datei-Volumes mehr nötig
 
   ui:
     build:
       context: ./DocumentManagementSystem.UI
       dockerfile: Dockerfile
     container_name: dms-ui
-    ports:
-      - "3000:80"
-    depends_on:
-      - api
+    ports: ["3000:80"]
+    depends_on: ["api"]
+    restart: unless-stopped
 
   rabbitmq:
     image: rabbitmq:3-management
     container_name: dms-rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
+    ports: ["5672:5672","15672:15672"]
     healthcheck:
-      test: ["CMD", "rabbitmqctl", "status"]
+      test: ["CMD","rabbitmqctl","status"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  ocr-worker:
+    build:
+      context: ..                                  # Repo-Root
+      dockerfile: OCR_Worker/Dockerfile
+    container_name: dms-ocr-worker
+    environment:
+      TESSDATA_PREFIX: /usr/share/tesseract-ocr/5/tessdata
+      # Rabbit Consumer
+      RABBIT_HOST: rabbitmq
+      RABBIT_QUEUE: ocr-queue
+      RABBIT_PREFETCH: "1"
+      RABBIT_ENABLE_DLQ: "true"
+    volumes:
+      # ⬇️ appsettings.json der API schreibgeschützt in den Worker geben
+      - ./appsettings.json:/config/appsettings.json:ro
+      # ✅ Garage-Zugang kommt aus der appsettings.json des Workers
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      garage:
+        condition: service_started
+    restart: unless-stopped
+
+  garage:
+    image: dxflrs/garage:v2.1.0
+    container_name: dms-garage
+    command: ["/garage","--config","/etc/garage.toml","server"]
+    ports:
+      - "3900:3900"        # S3 API
+      # - "3901:3901"      # optional: RPC vom Host aus
+    volumes:
+      - ./garage-config/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data               # persistente Daten
+    restart: unless-stopped
 
 volumes:
   dms-data:
+  garage-meta:
+  garage-data:
