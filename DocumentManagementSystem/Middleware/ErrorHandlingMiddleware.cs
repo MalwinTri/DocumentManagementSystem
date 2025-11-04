@@ -1,9 +1,9 @@
-﻿using DocumentManagementSystem.DAL.Postgres.Exceptions;
+﻿using System.Net;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
 using DocumentManagementSystem.Exceptions;
 
 namespace DocumentManagementSystem.Middleware;
@@ -59,7 +59,7 @@ public sealed class ErrorHandlingMiddleware
                 Detail = _env.IsDevelopment() ? ex.ToString() : "An unexpected error occurred.",
                 Instance = context.Request.Path
             };
-            GetExtensions(pd)["traceId"] = context.TraceIdentifier;
+            pd.Extensions["traceId"] = context.TraceIdentifier;
 
             await WriteProblem(context, pd, StatusCodes.Status500InternalServerError, ex, logAsError: true);
         }
@@ -114,77 +114,44 @@ public sealed class ErrorHandlingMiddleware
             Instance = ctx.Request.Path
         };
 
-        GetExtensions(pd)["traceId"] = ctx.TraceIdentifier;
+        pd.Extensions["traceId"] = ctx.TraceIdentifier;
 
         if (!string.IsNullOrWhiteSpace(ex.Code))
-            GetExtensions(pd)["code"] = ex.Code;
+            pd.Extensions["code"] = ex.Code;
 
         if (ex is ValidationException vex && vex.Errors?.Any() == true)
-            GetExtensions(pd)["errors"] = vex.Errors;
+            pd.Extensions["errors"] = vex.Errors;
 
         if (ex is NotFoundException nfx)
         {
             if (!string.IsNullOrWhiteSpace(nfx.Resource))
-                GetExtensions(pd)["resource"] = nfx.Resource;
+                pd.Extensions["resource"] = nfx.Resource;
             if (nfx.ResourceId is not null)
-                GetExtensions(pd)["id"] = nfx.ResourceId;
+                pd.Extensions["id"] = nfx.ResourceId;
         }
 
         return pd;
     }
 
-    private static ProblemDetails MapBadRequest(HttpContext ctx, BadHttpRequestException ex)
-        {
-        var pd = new ProblemDetails
+    private static ProblemDetails MapBadRequest(HttpContext ctx, BadHttpRequestException ex) =>
+        new()
         {
             Type = "https://httpstatuses.com/400",
             Title = "Bad request",
             Status = StatusCodes.Status400BadRequest,
             Detail = ex.Message,
-            Instance = ctx.Request.Path
+            Instance = ctx.Request.Path,
+            Extensions = { ["traceId"] = ctx.TraceIdentifier }
         };
-        GetExtensions(pd)["traceId"] = ctx.TraceIdentifier;
-        return pd;
-    }
 
-    private static ProblemDetails MapClientClosed(HttpContext ctx, OperationCanceledException ex)
-        {
-        var pd = new ProblemDetails
+    private static ProblemDetails MapClientClosed(HttpContext ctx, OperationCanceledException ex) =>
+        new()
         {
             Type = "about:blank",
             Title = "Client closed request",
             Status = 499, // custom
             Detail = "The request was aborted by the client.",
-            Instance = ctx.Request.Path
+            Instance = ctx.Request.Path,
+            Extensions = { ["traceId"] = ctx.TraceIdentifier }
         };
-        GetExtensions(pd)["traceId"] = ctx.TraceIdentifier;
-        return pd;
-    }
-
-    // Add this helper method to allow extensions on ProblemDetails
-    private static IDictionary<string, object> GetExtensions(ProblemDetails pd)
-    {
-        // Use a backing dictionary via reflection or create a new one if not present
-        // For simplicity, attach a dictionary via a property bag (Items) on ProblemDetails
-        // If you control ProblemDetails, consider adding an Extensions property directly
-        const string key = "__extensions";
-        if (pd is not null)
-        {
-            if (pd is IDictionary<string, object> dict)
-                return dict;
-            var itemsProp = pd.GetType().GetProperty("Items");
-            if (itemsProp != null)
-            {
-                var items = itemsProp.GetValue(pd) as IDictionary<object, object>;
-                if (items != null)
-                {
-                    if (!items.ContainsKey(key))
-                        items[key] = new Dictionary<string, object>();
-                    return (Dictionary<string, object>)items[key];
-                }
-            }
-        }
-        // fallback: create a new dictionary (not persisted)
-        return new Dictionary<string, object>();
-    }
 }
