@@ -1,12 +1,10 @@
 using Serilog;
-using System.Collections.Generic;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 
 using DocumentManagementSystem.Database;
 using DocumentManagementSystem.Database.Repositories;
-using DocumentManagementSystem.Services;
 using DocumentManagementSystem.BL.Documents;
 using DocumentManagementSystem.Middleware;
 using DocumentManagementSystem.DAL;
@@ -60,19 +58,21 @@ internal class Program
             builder.Services.AddScoped<DocumentService>();
 
             // ---------- RabbitMQ ----------
-            builder.Services.AddSingleton(sp =>
+            // Als Interface registrieren; liest aus ENV oder appsettings (optional)
+            builder.Services.AddSingleton<IRabbitMqService>(sp =>
             {
-                var host = builder.Configuration["RABBIT_HOST"] ?? "rabbitmq";
+                var cfg = sp.GetRequiredService<IConfiguration>();
                 var logger = sp.GetRequiredService<ILogger<RabbitMqService>>();
-                return new RabbitMqService(logger, host);
+                var host = cfg["Rabbit:Host"] ?? cfg["RABBIT_HOST"] ?? "rabbitmq";
+                var user = cfg["Rabbit:User"] ?? cfg["RABBIT_USER"] ?? "guest";
+                var pass = cfg["Rabbit:Password"] ?? cfg["RABBIT_PASSWORD"] ?? "guest";
+                var queue = cfg["Rabbit:Queue"] ?? cfg["RABBIT_QUEUE"] ?? "documents.ocr";
+                return new RabbitMqService(logger, host, user, pass, queue);
             });
-            // Queue-Name zentral in Config, Default wie im Worker
-            if (string.IsNullOrWhiteSpace(builder.Configuration["RABBIT_QUEUE"]))
-                builder.Configuration["RABBIT_QUEUE"] = "documents.ocr";
 
             // ---------- S3 / Garage ----------
-            // Dein GarageS3Service liest die Werte aus IConfiguration (S3_* Keys).
-            builder.Services.AddSingleton<GarageS3Service>();
+            // Als Interface registrieren; liest "GarageS3" aus appsettings.json
+            builder.Services.AddSingleton<IGarageS3Service, GarageS3Service>();
 
             // ---------- Upload size (z. B. 100 MB PDFs zulassen) ----------
             builder.Services.Configure<FormOptions>(o =>

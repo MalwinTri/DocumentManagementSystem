@@ -1,5 +1,4 @@
-﻿using DocumentManagementSystem.Services;
-using DocumentManagementSystem.Models;
+﻿using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using DocumentManagementSystem.Exceptions;
@@ -13,15 +12,15 @@ public class DocumentService
     private readonly IDocumentRepository _docRepo;
     private readonly ITagRepository _tagRepo;
     private readonly ILogger<DocumentService> _logger;
-    private readonly RabbitMqService _mq;
-    private readonly GarageS3Service _garageS3;
+    private readonly IRabbitMqService _mq;
+    private readonly IGarageS3Service _garageS3;
 
     public DocumentService(
         IDocumentRepository docRepo,
         ITagRepository tagRepo,
         ILogger<DocumentService> logger,
-        RabbitMqService mq,
-        GarageS3Service garageS3)
+        IRabbitMqService mq,
+        IGarageS3Service garageS3)
     {
         _docRepo = docRepo;
         _tagRepo = tagRepo;
