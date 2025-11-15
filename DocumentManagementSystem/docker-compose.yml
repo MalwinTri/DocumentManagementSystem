@@ -16,13 +16,12 @@
 
   api:
     build:
-      context: ..                                  # Repo-Root (wichtig!)
+      context: ..                                
       dockerfile: DocumentManagementSystem/Dockerfile
     container_name: dms-api
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
-      # Rabbit Publisher
       RABBIT_HOST: rabbitmq
       RABBIT_USER: guest
       RABBIT_PASS: guest
@@ -36,7 +35,6 @@
       garage:
         condition: service_started
     restart: unless-stopped
-    # Keine Datei-Volumes mehr nötig
 
   ui:
     build:
@@ -60,20 +58,17 @@
 
   ocr-worker:
     build:
-      context: ..                                  # Repo-Root
+      context: ..                              
       dockerfile: OCR_Worker/Dockerfile
     container_name: dms-ocr-worker
     environment:
       TESSDATA_PREFIX: /usr/share/tesseract-ocr/5/tessdata
-      # Rabbit Consumer
       RABBIT_HOST: rabbitmq
       RABBIT_QUEUE: ocr-queue
       RABBIT_PREFETCH: "1"
       RABBIT_ENABLE_DLQ: "true"
     volumes:
-      # ⬇️ appsettings.json der API schreibgeschützt in den Worker geben
       - ./appsettings.json:/config/appsettings.json:ro
-      # ✅ Garage-Zugang kommt aus der appsettings.json des Workers
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -86,12 +81,11 @@
     container_name: dms-garage
     command: ["/garage","--config","/etc/garage.toml","server"]
     ports:
-      - "3900:3900"        # S3 API
-      # - "3901:3901"      # optional: RPC vom Host aus
+      - "3900:3900"     
     volumes:
       - ./garage-config/garage.toml:/etc/garage.toml:ro
       - garage-meta:/var/lib/garage/meta
-      - garage-data:/var/lib/garage/data               # persistente Daten
+      - garage-data:/var/lib/garage/data             
     restart: unless-stopped
 
 volumes:
