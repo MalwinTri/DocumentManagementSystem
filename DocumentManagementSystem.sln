@@ -3,9 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36221.1
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentManagementSystem", "DocumentManagementSystem\DocumentManagementSystem.csproj", "{2CF6FECF-88F6-4065-9BC7-2C3090BF470F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DocumentManagementSystem", "DocumentManagementSystem\DocumentManagementSystem.csproj", "{2CF6FECF-88F6-4065-9BC7-2C3090BF470F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentManagementSystem.Tests", "DocumentManagementSystem.Tests\DocumentManagementSystem.Tests.csproj", "{FF0F14A1-0D0A-4B76-889A-E37094CFF6A8}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DocumentManagementSystem.Tests", "DocumentManagementSystem.Tests\DocumentManagementSystem.Tests.csproj", "{FF0F14A1-0D0A-4B76-889A-E37094CFF6A8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentManagementSystem.OCR_Worker", "OCR_Worker\DocumentManagementSystem.OCR_Worker.csproj", "{441B2D36-DF3A-4AEB-9C64-8BBFEF794FF4}"
 EndProject
@@ -20,6 +20,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentManagementSystem.BL.Documents", "DocumentManagementSystem.BL.Documents\DocumentManagementSystem.BL.Documents.csproj", "{1602E82D-EE26-4EBC-933A-6AD65BCC02E1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentManagementSystem.Shared.Exceptions", "Shared.Exceptions\DocumentManagementSystem.Shared.Exceptions.csproj", "{ADFA6789-E8A9-44C4-8771-5BD3A5051A30}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DocumentManagementSystem.GenAI_Worker", "DocumentManagementSystem.GenAI_Worker\DocumentManagementSystem.GenAI_Worker.csproj", "{4EFA61E7-DFE3-4AFD-B78E-B62D719D83B1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -63,6 +65,10 @@ Global
 		{ADFA6789-E8A9-44C4-8771-5BD3A5051A30}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{ADFA6789-E8A9-44C4-8771-5BD3A5051A30}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{ADFA6789-E8A9-44C4-8771-5BD3A5051A30}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4EFA61E7-DFE3-4AFD-B78E-B62D719D83B1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4EFA61E7-DFE3-4AFD-B78E-B62D719D83B1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4EFA61E7-DFE3-4AFD-B78E-B62D719D83B1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4EFA61E7-DFE3-4AFD-B78E-B62D719D83B1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

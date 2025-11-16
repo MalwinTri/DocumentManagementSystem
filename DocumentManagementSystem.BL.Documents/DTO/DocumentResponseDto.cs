@@ -5,5 +5,6 @@ public record DocumentResponseDto(
     string Title,
     string? Description,
     List<string> Tags,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    string Summary //für AI
 );

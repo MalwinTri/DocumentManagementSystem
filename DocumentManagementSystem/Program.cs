@@ -9,6 +9,8 @@ using DocumentManagementSystem.BL.Documents;
 using DocumentManagementSystem.Middleware;
 using DocumentManagementSystem.DAL;
 using DocumentManagementSystem.Infrastructure.Services;
+using DocumentManagementSystem.Infrastructure.Services.GenAI;
+using Microsoft.Win32;
 
 internal class Program
 {
@@ -31,6 +33,15 @@ internal class Program
                 .AddEnvironmentVariables();
 
             builder.Host.UseSerilog();
+
+
+            // -- GenAI: Gemini -------
+
+            builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection("Gemini"));
+
+            builder.Services.AddHttpClient<IGenAiService, GeminiService>();
+
+
 
             // ---- Normalize/Map config keys so either GARAGE_S3_* or S3_* works ----
             var map = new Dictionary<string, string?>();

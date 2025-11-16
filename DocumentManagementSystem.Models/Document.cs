@@ -13,5 +13,11 @@ public class Document
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    public string? OcrText { get; set; }
+
+    public string? Summary { get; set; }
+
+
     public ICollection<Tag> Tags { get; set; } = new HashSet<Tag>();
+
 }
