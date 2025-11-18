@@ -32,7 +32,6 @@ public class DocumentsController : ControllerBase
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> Upload([FromForm] DocumentUploadForm form, CancellationToken ct)
     {
-        // ModelState-Check inkl. Logging (aus File 2)
         if (!ModelState.IsValid)
         {
             _logger.LogWarning("Upload validation failed: {ModelState}", ModelState);
@@ -74,41 +73,6 @@ public class DocumentsController : ControllerBase
         else
         {
             _logger.LogInformation("Non-PDF uploaded; skipping OCR for DocumentId={DocumentId}", saved.Id);
-        }
-
-        _logger.LogInformation("Upload finished for DocumentId={DocumentId}", saved.Id);
-
-        // Datei persistieren
-        try
-        {
-            var safeTitle = string.Concat(form.Title.Where(c => char.IsLetterOrDigit(c) || c == '_'));
-            var file = form.File!;
-            var extension = Path.GetExtension(file.FileName);
-            var fileName = $"{safeTitle}_{saved.Id}{extension}";
-            var dir = "files";
-            Directory.CreateDirectory(dir);
-            var filePath = Path.Combine(dir, fileName);
-
-            await using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
-            await file.CopyToAsync(stream, ct);
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "File IO error for DocumentId={DocumentId}", saved.Id);
-            throw new OperationFailedException("Could not persist uploaded file", code: "file_io_error", inner: ex);
-        }
-
-        // OCR-Message enqueuen
-        try
-        {
-            _rabbitMqService.SendOcrMessage(new { DocumentId = saved.Id, FileName = saved.Title });
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error when sending OCR message for DocumentId={DocumentId}", saved.Id);
-            throw new OperationFailedException("Could not enqueue OCR job", code: "enqueue_failed", inner: ex);
         }
 
         _logger.LogInformation("Upload finished for DocumentId={DocumentId}", saved.Id);

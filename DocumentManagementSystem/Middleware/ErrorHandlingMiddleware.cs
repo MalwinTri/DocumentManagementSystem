@@ -134,7 +134,7 @@ public sealed class ErrorHandlingMiddleware
     }
 
     private static ProblemDetails MapBadRequest(HttpContext ctx, BadHttpRequestException ex)
-        {
+    {
         var pd = new ProblemDetails
         {
             Type = "https://httpstatuses.com/400",
@@ -148,7 +148,7 @@ public sealed class ErrorHandlingMiddleware
     }
 
     private static ProblemDetails MapClientClosed(HttpContext ctx, OperationCanceledException ex)
-        {
+    {
         var pd = new ProblemDetails
         {
             Type = "about:blank",
