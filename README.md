@@ -288,6 +288,166 @@ Sprint 4 ist vollständig umgesetzt: **Upload → Queue → OCR → Text zurüc
 
 ---
 
+## Sprint 5: Generative AI-Integration
+
+In Sprint 5 wurde das bestehende Dokumentenmanagementsystem um **Generative AI support** mittels **Google Gemini** erweitert.  
+
+Ziel war es, dass nach dem Upload eines Dokuments und der OCR-Verarbeitung automatisch:
+
+1. der extrahierte Text an den GenAI-Dienst (Google Gemini) gesendet wird,
+2. ein automatisch generiertes **Summary** zurückkommt,
+3. dieses Summary in der **Datenbank** gespeichert wird und
+4. über **REST-API** und **UI** verfügbar ist.
+
+Zusätzlich wurden in diesem Sprint Logging, Fehlerbehandlung sowie Docker-Integration für alle neuen Komponenten ergänzt.
+
+
+### Umfang
+
+- Erweiterung von `docker-compose.yml` um den neuen **GenAI-Worker-Service**
+- Neues Projekt: **`DocumentManagementSystem.GenAI_Worker`**
+- Erweiterung der **Dokumenten-Verarbeitungskette**:
+  - Dokument-Upload
+  - Speicherung in Garage (S3-kompatibel)
+  - OCR-Worker extrahiert Text
+  - GenAI-Worker sendet OCR-Text an **Google Gemini**
+  - Das generierte Summary wird in der Datenbank gespeichert
+- Erweiterung der **REST-API**:
+  - Summary wird im Document-DTO zurückgegeben
+  - Endpoint zum Aktualisieren von Metadaten (Titel, Tags, Summary)
+- Integration von **Serilog** für strukturiertes Logging
+- Verbesserte **Fehlerbehandlung** bei:
+  - Externen API-Fehlern (Gemini)
+  - Datenbankzugriffen
+  - S3-Kommunikation
+  - Worker-Prozessen
+
+---
+
+### Architektur
+
+```mermaid
+flowchart LR
+    UI[React UI<br/>DocumentManagementSystem.UI]
+    API[REST API<br/>DocumentManagementSystem.API]
+    DB[(PostgreSQL)]
+    S3[(Garage S3)]
+    MQ[(RabbitMQ)]
+    OCR[OCR Worker]
+    GENAI[GenAI Worker<br/>Google Gemini Integration]
+    GEMINI[(Google Gemini API)]
+
+    UI --> API
+    API --> DB
+    API --> S3
+    API --> MQ
+
+    MQ --> OCR
+    OCR --> S3
+    OCR --> DB
+
+    GENAI --> DB
+    GENAI --> GEMINI
+    GEMINI --> GENAI
+
+```
+
+```mermaid
+sequenceDiagram
+    participant UI as Web UI
+    participant API as REST API
+    participant MQ as RabbitMQ
+    participant S3 as Garage S3
+    participant OCR as OCR Worker
+    participant DB as PostgreSQL
+    participant GA as GenAI Worker
+    participant Gemini as Google Gemini
+
+    UI->>API: Upload Document
+    API->>S3: Store File
+    API->>DB: Insert Document Metadata
+    API->>MQ: Publish OCR Job
+
+    MQ->>OCR: Deliver Job
+    OCR->>S3: Download Document
+    OCR->>OCR: Perform OCR
+    OCR->>DB: Save Extracted Text (ocr_text)
+    OCR->>DB: Mark OCR_Completed = true
+
+    GA->>DB: Query documents WHERE summary is null AND ocr_text is not null
+    DB-->>GA: Return next document
+
+    GA->>Gemini: Send OCR Text
+    Gemini-->>GA: Return AI Summary
+
+    GA->>DB: Save Summary (summary field)
+
+    UI->>API: Request document details
+    API->>DB: Fetch including Summary
+    DB-->>API: Return full document DTO
+    API-->>UI: Display Summary
+```
+
+### Komponenten
+
+#### **DocumentManagementSystem.API**
+- ASP.NET Core REST API  
+- Funktionen:
+  - Dokument-Upload
+  - Auflisten von Dokumenten
+  - Aktualisieren von Metadaten (Titel, Tags, Summary)
+  - Bulk-Löschen
+- Summary wird im Document-DTO ausgegeben.
+
+#### **OCR_Worker**
+- Konsumiert Nachrichten aus RabbitMQ (`ocr-queue`)
+- Lädt Dokumente aus Garage (S3)
+- Führt OCR auf PDF/PNG/JPG durch
+- Speichert extrahierten Text in der Datenbank
+- Markiert Dokumente als *OCR abgeschlossen*
+
+#### **GenAI_Worker (`DocumentManagementSystem.GenAI_Worker`)**
+- **Neuer Worker in Sprint 5**
+- Periodisches Polling der Datenbank:
+  - Dokumente mit OCR-Text  
+  - aber ohne Summary
+- Sendet den Text an **Google Gemini**
+- Speichert die generierte Zusammenfassung in der Datenbank
+
+#### **UI – React / Vite / Tailwind**
+- Neues Panel für **„AI Summary“**
+- Editierbare Felder für:
+  - Titel  
+  - Tags  
+  - AI-Zusammenfassung  
+- Unterstützt Bulk-Aktionen wie Sammellöschen
+
+#### **Infrastruktur**
+- PostgreSQL  
+- RabbitMQ  
+- Garage (S3-kompatibel)  
+- Docker Compose für Orchestrierung
+
+---
+
+### GenAI-Integration / Google Gemini
+
+### Konfiguration
+
+Konfiguration erfolgt über `appsettings.json` (ohne Secrets) und Umgebungsvariablen.
+
+#### `appsettings.json` (Auszug)
+
+```json
+"Gemini": {
+  "ApiKey": "",
+  "BaseUrl": "https://generativelanguage.googleapis.com/v1beta",
+  "Model": "models/gemini-2.5-flash"
+}
+```
+
+---
+
 ## Erweiterungsidee
 
 Automatisches Tagging mit GemAI
