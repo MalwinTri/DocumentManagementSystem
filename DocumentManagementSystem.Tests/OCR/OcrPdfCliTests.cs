@@ -1,6 +1,5 @@
 ﻿using System.Diagnostics;
 using System.Globalization;
-using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using FluentAssertions;
@@ -69,6 +68,83 @@ public class OcrPdfCliTests
         }
     }
 
+    [Fact]
+    public void TessEnv_Uses_TESSDATA_PREFIX_when_set()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"tessdata_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        var old = Environment.GetEnvironmentVariable("TESSDATA_PREFIX");
+        try
+        {
+            Environment.SetEnvironmentVariable("TESSDATA_PREFIX", tempDir);
+            var dict = OcrCliSmokeTests_Tools.TessEnv();
+
+            dict.Should().ContainKey("TESSDATA_PREFIX");
+            dict["TESSDATA_PREFIX"].Should().Be(tempDir);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TESSDATA_PREFIX", old);
+            try { Directory.Delete(tempDir); } catch { }
+        }
+    }
+
+    [Fact]
+    public void TesseractExe_Uses_env_on_windows_else_returns_tesseract()
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), $"tess_{Guid.NewGuid():N}.exe");
+        File.WriteAllText(tmp, string.Empty);
+        var old = Environment.GetEnvironmentVariable("TESSERACT_EXE");
+        try
+        {
+            Environment.SetEnvironmentVariable("TESSERACT_EXE", tmp);
+            var res = OcrCliSmokeTests_Tools.TesseractExe();
+            if (OperatingSystem.IsWindows())
+                res.Should().Be(tmp);
+            else
+                res.Should().Be("tesseract");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TESSERACT_EXE", old);
+            try { File.Delete(tmp); } catch { }
+        }
+    }
+
+    [Fact]
+    public void GhostscriptExe_Uses_env_on_windows_else_returns_gs()
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), $"gs_{Guid.NewGuid():N}.exe");
+        File.WriteAllText(tmp, string.Empty);
+        var old = Environment.GetEnvironmentVariable("GHOSTSCRIPT_EXE");
+        try
+        {
+            Environment.SetEnvironmentVariable("GHOSTSCRIPT_EXE", tmp);
+            var res = OcrCliSmokeTests_Tools.GhostscriptExe();
+            if (OperatingSystem.IsWindows())
+                res.Should().Be(tmp);
+            else
+                res.Should().Be("gs");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("GHOSTSCRIPT_EXE", old);
+            try { File.Delete(tmp); } catch { }
+        }
+    }
+
+    [Fact]
+    public void TryDelete_deletes_file_and_does_not_throw_for_missing()
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), $"del_{Guid.NewGuid():N}.tmp");
+        File.WriteAllText(tmp, "x");
+        OcrCliSmokeTests_Tools.TryDelete(tmp);
+        File.Exists(tmp).Should().BeFalse();
+
+        // second call must not throw
+        OcrCliSmokeTests_Tools.TryDelete(tmp);
+    }
+
     // --- Delegation an die gemeinsame Tool-Klasse ---
     static string TesseractExe() => OcrCliSmokeTests_Tools.TesseractExe();
     static string GhostscriptExe() => OcrCliSmokeTests_Tools.GhostscriptExe();
@@ -77,19 +153,17 @@ public class OcrPdfCliTests
         => await OcrCliSmokeTests_Tools.RunCliAsync(file, args, env);
     static void TryDelete(string path) => OcrCliSmokeTests_Tools.TryDelete(path);
 
-    // OCR-freundliche Normalisierung (Diakritika, Umlaute, Interpunktion, Whitespaces)
+    // OCR-freundliche Normalisierung (für den E2E-Test beibehalten)
     static string FoldForOcrAssertions(string s)
     {
         if (string.IsNullOrEmpty(s)) return string.Empty;
 
-        // Deutsche Umlaute/ß zuerst "vernünftig" mappen
         var mapped = s
             .Replace("Ä", "Ae").Replace("ä", "ae")
             .Replace("Ö", "Oe").Replace("ö", "oe")
             .Replace("Ü", "Ue").Replace("ü", "ue")
             .Replace("ß", "ss");
 
-        // Übrige Diakritika entfernen
         var formD = mapped.Normalize(NormalizationForm.FormD);
         var sb = new StringBuilder(formD.Length);
         foreach (var ch in formD)
@@ -100,7 +174,6 @@ public class OcrPdfCliTests
         }
         var noMarks = sb.ToString().Normalize(NormalizationForm.FormC);
 
-        // Satzzeichen/Symbole vereinheitlichen, Spaces glätten
         noMarks = noMarks.Replace('–', '-').Replace('—', '-');
         noMarks = Regex.Replace(noMarks, @"[\p{P}\p{S}]", " ");
         noMarks = Regex.Replace(noMarks, @"\s+", " ").Trim();
@@ -139,7 +212,7 @@ static class OcrCliSmokeTests_Tools
             static string? Probe(string root)
                 => Directory.Exists(root)
                     ? Directory.GetDirectories(root)
-                        .OrderByDescending(x => x) // höchste Versionsmappe
+                        .OrderByDescending(x => x)
                         .Select(x => Path.Combine(x, "bin", "gswin64c.exe"))
                         .FirstOrDefault(File.Exists)
                     : null;

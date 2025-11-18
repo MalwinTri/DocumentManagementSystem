@@ -1,16 +1,14 @@
 using Serilog;
-using System.Collections.Generic;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
-
 using DocumentManagementSystem.Database;
 using DocumentManagementSystem.Database.Repositories;
-using DocumentManagementSystem.Services;
 using DocumentManagementSystem.BL.Documents;
 using DocumentManagementSystem.Middleware;
 using DocumentManagementSystem.DAL;
 using DocumentManagementSystem.Infrastructure.Services;
+using DocumentManagementSystem.Infrastructure.Services.GenAI;
 
 internal class Program
 {
@@ -34,6 +32,15 @@ internal class Program
 
             builder.Host.UseSerilog();
 
+
+            // -- GenAI: Gemini -------
+
+            builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection("Gemini"));
+
+            builder.Services.AddHttpClient<IGenAiService, GeminiService>();
+
+
+
             // ---- Normalize/Map config keys so either GARAGE_S3_* or S3_* works ----
             var map = new Dictionary<string, string?>();
             void Map(string target, string source)
@@ -49,7 +56,6 @@ internal class Program
             Map("S3_ACCESS_KEY", "GARAGE_S3_ACCESS_KEY");
             Map("S3_SECRET_KEY", "GARAGE_S3_SECRET_KEY");
             if (map.Count > 0) builder.Configuration.AddInMemoryCollection(map);
-            // ----------------------------------------------------------------------
 
             // ---------- Database ----------
             var connectionString = builder.Configuration.GetConnectionString("Default");
@@ -60,19 +66,20 @@ internal class Program
             builder.Services.AddScoped<DocumentService>();
 
             // ---------- RabbitMQ ----------
-            builder.Services.AddSingleton(sp =>
+            // Als Interface registrieren; liest aus ENV oder appsettings (optional)
+            builder.Services.AddSingleton<IRabbitMqService>(sp =>
             {
-                var host = builder.Configuration["RABBIT_HOST"] ?? "rabbitmq";
+                var cfg = sp.GetRequiredService<IConfiguration>();
                 var logger = sp.GetRequiredService<ILogger<RabbitMqService>>();
-                return new RabbitMqService(logger, host);
+                var host = cfg["Rabbit:Host"] ?? cfg["RABBIT_HOST"] ?? "rabbitmq";
+                var user = cfg["Rabbit:User"] ?? cfg["RABBIT_USER"] ?? "guest";
+                var pass = cfg["Rabbit:Password"] ?? cfg["RABBIT_PASSWORD"] ?? "guest";
+                var queue = cfg["Rabbit:Queue"] ?? cfg["RABBIT_QUEUE"] ?? "documents.ocr";
+                return new RabbitMqService(logger, host, user, pass, queue);
             });
-            // Queue-Name zentral in Config, Default wie im Worker
-            if (string.IsNullOrWhiteSpace(builder.Configuration["RABBIT_QUEUE"]))
-                builder.Configuration["RABBIT_QUEUE"] = "documents.ocr";
 
             // ---------- S3 / Garage ----------
-            // Dein GarageS3Service liest die Werte aus IConfiguration (S3_* Keys).
-            builder.Services.AddSingleton<GarageS3Service>();
+            builder.Services.AddSingleton<IGarageS3Service, GarageS3Service>();
 
             // ---------- Upload size (z. B. 100 MB PDFs zulassen) ----------
             builder.Services.Configure<FormOptions>(o =>

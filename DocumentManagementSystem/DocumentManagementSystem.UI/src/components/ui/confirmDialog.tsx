@@ -8,17 +8,18 @@ import {
     AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
-} from "@/components/ui/alert-dialog"; // shadcn/ui
+} from "@/components/ui/alert-dialog"; 
 
 export type ConfirmOptions = {
     title?: React.ReactNode;
     description?: React.ReactNode;
     confirmText?: string;
     cancelText?: string;
-    destructive?: boolean; // roter Button
+    destructive?: boolean;
 };
 
-type ConfirmFn = (opts?: ConfirmOptions) => Promise<boolean>;
+type ConfirmFn = (opts?: ConfirmOptions) => Promise<boolean>; 
+
 
 const ConfirmContext = React.createContext<ConfirmFn | null>(null);
 
@@ -31,7 +32,7 @@ export function useConfirm(): ConfirmFn {
 export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     const [open, setOpen] = React.useState(false);
     const [opts, setOpts] = React.useState<ConfirmOptions>({});
-    const resolver = React.useRef<(v: boolean) => void>();
+    const resolver = React.useRef<((v: boolean) => void) | null>(null);
 
     const confirm = React.useCallback<ConfirmFn>((options) => {
         setOpts(options ?? {});
