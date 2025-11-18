@@ -1,13 +1,6 @@
-﻿using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using DocumentManagementSystem.DAL.Postgres;
-using DocumentManagementSystem.Database;
+﻿using DocumentManagementSystem.Database;
 using DocumentManagementSystem.Infrastructure.Services.GenAI;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace DocumentManagementSystem.GenAI_Worker.AiWorker
 {
@@ -35,7 +28,6 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
             {
                 try
                 {
-                    // Find one document whose OCR text is present but summary is still missing
                     var doc = await _dbContext.Documents
                         .Where(d => d.OcrText != null && d.Summary == null)
                         .OrderBy(d => d.CreatedAt)
@@ -43,7 +35,6 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
 
                     if (doc == null)
                     {
-                        // nothing to do, wait a bit
                         await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
                         continue;
                     }
@@ -62,13 +53,11 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
                     else
                     {
                         _logger.LogWarning("No summary generated for document {DocumentId}", doc.Id);
-                        // Optionally mark a 'failed' status or retry counter here
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error in GenAI worker loop");
-                    // Backoff a bit on hard failures
                     await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
                 }
             }

@@ -88,6 +88,17 @@
       - garage-data:/var/lib/garage/data             
     restart: unless-stopped
 
+  genai-worker:
+    build:
+      context: ..
+      dockerfile: DocumentManagementSystem.GenAI_Worker/Dockerfile
+    container_name: dms-genai-worker
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped 
 volumes:
   dms-data:
   garage-meta:

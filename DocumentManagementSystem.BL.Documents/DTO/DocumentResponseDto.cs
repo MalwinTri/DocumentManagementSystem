@@ -6,5 +6,6 @@ public record DocumentResponseDto(
     string? Description,
     List<string> Tags,
     DateTime CreatedAt,
-    string Summary //für AI
+    string? OcrText,   
+    string? Summary
 );

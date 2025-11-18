@@ -33,7 +33,7 @@ public class DocumentService
         string title,
         string? description,
         List<string>? tags,
-        Stream? pdfStream, // NEU
+        Stream? pdfStream, 
         CancellationToken ct = default)
     {
         _logger.LogInformation("CreateAsync started. Title=\"{Title}\", IncomingTags={TagCount}", title, tags?.Count ?? 0);
@@ -121,11 +121,12 @@ public class DocumentService
     }
 
     public async Task<Document?> UpdateAsync(
-        Guid id,
-        string? title,
-        string? description,
-        List<string>? tags,
-        CancellationToken ct = default)
+    Guid id,
+    string? title,
+    string? description,
+    List<string>? tags,
+    string? summary,                     // <= NEU
+    CancellationToken ct = default)
     {
         _logger.LogInformation("UpdateAsync started for DocumentId={DocumentId}", id);
 
@@ -162,10 +163,18 @@ public class DocumentService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to get or create tag '{TagName}' while updating DocumentId={DocumentId}", raw, id);
+                    _logger.LogError(ex,
+                        "Failed to get or create tag '{TagName}' while updating DocumentId={DocumentId}",
+                        raw, id);
                     throw;
                 }
             }
+        }
+
+        if (summary is not null)
+        {
+            _logger.LogDebug("UpdateAsync: updating Summary for DocumentId={DocumentId}", id);
+            doc.Summary = summary;
         }
 
         try
@@ -180,6 +189,8 @@ public class DocumentService
             throw;
         }
     }
+
+
 
     public Task<Document?> GetAsync(Guid id, CancellationToken ct = default)
     {

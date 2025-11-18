@@ -1,14 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net.Http.Json;
-using System.Text;
-using System.Threading.Tasks;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
 
 
 namespace DocumentManagementSystem.Infrastructure.Services.GenAI
@@ -39,12 +31,12 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
             var request = new GeminiRequest
             {
                 Contents =
-            {
-                new GeminiContent
                 {
-                    Parts = { new GeminiPart { Text = prompt } }
+                    new GeminiContent
+                    {
+                        Parts = { new GeminiPart { Text = prompt } }
+                    }
                 }
-            }
             };
 
             var url = $"{_options.BaseUrl}/{_options.Model}:generateContent?key={_options.ApiKey}";
@@ -59,7 +51,7 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
                 {
                     var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
                     _logger.LogError("Gemini API returned {StatusCode}: {Body}", response.StatusCode, errorBody);
-                    return null; // or throw a custom exception
+                    return null; 
                 }
 
                 var geminiResponse = await response.Content.ReadFromJsonAsync<GeminiResponse>(cancellationToken: cancellationToken);
@@ -79,7 +71,7 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error calling Gemini API");
-                return null; // or throw
+                return null; 
             }
         }
     }

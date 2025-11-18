@@ -1,10 +1,7 @@
-using DocumentManagementSystem.DAL.Postgres;
 using DocumentManagementSystem.Database;
 using DocumentManagementSystem.GenAI_Worker.AiWorker;
 using DocumentManagementSystem.Infrastructure.Services.GenAI;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
 IHost host = Host.CreateDefaultBuilder(args)
     .ConfigureServices((context, services) =>

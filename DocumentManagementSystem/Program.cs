@@ -2,7 +2,6 @@ using Serilog;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
-
 using DocumentManagementSystem.Database;
 using DocumentManagementSystem.Database.Repositories;
 using DocumentManagementSystem.BL.Documents;
@@ -10,7 +9,6 @@ using DocumentManagementSystem.Middleware;
 using DocumentManagementSystem.DAL;
 using DocumentManagementSystem.Infrastructure.Services;
 using DocumentManagementSystem.Infrastructure.Services.GenAI;
-using Microsoft.Win32;
 
 internal class Program
 {
@@ -58,7 +56,6 @@ internal class Program
             Map("S3_ACCESS_KEY", "GARAGE_S3_ACCESS_KEY");
             Map("S3_SECRET_KEY", "GARAGE_S3_SECRET_KEY");
             if (map.Count > 0) builder.Configuration.AddInMemoryCollection(map);
-            // ----------------------------------------------------------------------
 
             // ---------- Database ----------
             var connectionString = builder.Configuration.GetConnectionString("Default");
@@ -82,7 +79,6 @@ internal class Program
             });
 
             // ---------- S3 / Garage ----------
-            // Als Interface registrieren; liest "GarageS3" aus appsettings.json
             builder.Services.AddSingleton<IGarageS3Service, GarageS3Service>();
 
             // ---------- Upload size (z. B. 100 MB PDFs zulassen) ----------
