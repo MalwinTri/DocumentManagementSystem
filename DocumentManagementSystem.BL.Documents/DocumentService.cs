@@ -219,4 +219,27 @@ public class DocumentService
         _logger.LogInformation("ListAsync returned {Returned} of {Total} total items for page={Page}", items.Count, total, page);
         return (items, total);
     }
+
+    public async Task<IReadOnlyList<Document>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken ct = default)
+    {
+        var idList = ids?
+            .Distinct()
+            .ToList() ?? new List<Guid>();
+
+        if (idList.Count == 0)
+        {
+            _logger.LogInformation("GetByIdsAsync called with empty id list");
+            return Array.Empty<Document>();
+        }
+
+        _logger.LogInformation("GetByIdsAsync requested for {Count} documents", idList.Count);
+
+        var query = _docRepo.Query()
+            .Where(d => idList.Contains(d.Id)); // nutzt dein bestehendes Query()
+
+        var items = await query.ToListAsync(ct);
+
+        _logger.LogInformation("GetByIdsAsync returned {Count} documents", items.Count);
+        return items;
+    }
 }

@@ -1,6 +1,7 @@
 using DocumentManagementSystem.Database;
 using DocumentManagementSystem.GenAI_Worker.AiWorker;
 using DocumentManagementSystem.Infrastructure.Services.GenAI;
+using DocumentManagementSystem.Elasticsearch.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 
 IHost host = Host.CreateDefaultBuilder(args)
@@ -15,6 +16,9 @@ IHost host = Host.CreateDefaultBuilder(args)
         // Gemini options + service
         services.Configure<GeminiOptions>(configuration.GetSection("Gemini"));
         services.AddHttpClient<IGenAiService, GeminiService>();
+
+        // Elasticsearch-Dienste (gleiche Config wie im API)
+        services.AddElasticsearchServices(configuration);
 
         // Background worker
         services.AddHostedService<GenAiWorkerService>();

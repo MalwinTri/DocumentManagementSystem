@@ -1,4 +1,6 @@
 ﻿using DocumentManagementSystem.Database;
+using DocumentManagementSystem.Elasticsearch.Services;
+using DocumentManagementSystem.Elasticsearch.Models;
 using DocumentManagementSystem.Infrastructure.Services.GenAI;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,15 +11,18 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
         private readonly ILogger<GenAiWorkerService> _logger;
         private readonly DmsDbContext _dbContext;
         private readonly IGenAiService _genAiService;
+        private readonly ISearchIndexService _searchIndexService;
 
         public GenAiWorkerService(
             ILogger<GenAiWorkerService> logger,
             DmsDbContext dbContext,
-            IGenAiService genAiService)
+            IGenAiService genAiService,
+            ISearchIndexService searchIndexService)
         {
             _logger = logger;
             _dbContext = dbContext;
             _genAiService = genAiService;
+            _searchIndexService = searchIndexService;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -29,9 +34,10 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
                 try
                 {
                     var doc = await _dbContext.Documents
-                        .Where(d => d.OcrText != null && d.Summary == null)
-                        .OrderBy(d => d.CreatedAt)
-                        .FirstOrDefaultAsync(stoppingToken);
+                    .Include(d => d.Tags) // Tags mitladen für Elasticsearch
+                    .Where(d => d.OcrText != null && d.Summary == null)
+                    .OrderBy(d => d.CreatedAt)
+                    .FirstOrDefaultAsync(stoppingToken);
 
                     if (doc == null)
                     {
@@ -49,6 +55,23 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
                         await _dbContext.SaveChangesAsync(stoppingToken);
 
                         _logger.LogInformation("Summary stored for document {DocumentId}", doc.Id);
+
+                        // NACHDEM Summary gespeichert ist: in Elasticsearch indexieren
+                        try
+                        {
+                            var indexDoc = doc.ToDocumentIndex(); // Extension aus DocumentIndexMapper
+                            await _searchIndexService.IndexDocumentAsync(indexDoc, stoppingToken);
+
+                            _logger.LogInformation(
+                                "Document {DocumentId} indexed in Elasticsearch",
+                                doc.Id);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex,
+                                "Failed to index document {DocumentId} in Elasticsearch",
+                                doc.Id);
+                        }
                     }
                     else
                     {

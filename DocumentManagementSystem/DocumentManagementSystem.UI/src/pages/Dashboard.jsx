@@ -27,6 +27,7 @@ import {
     listDocuments,
     deleteDocumentsBulk,
     updateDocument,
+    searchDocuments,
 } from "@/api/documents";
 import { useConfirm } from "@/components/ui/confirmDialog";
 
@@ -403,28 +404,42 @@ export default function Dashboard() {
     const [busy, setBusy] = React.useState(false);
     const [err, setErr] = React.useState(null);
     const [openItem, setOpenItem] = React.useState(null);
+    const [query, setQuery] = React.useState("");
 
+    // Live-Suche mit kleinem Delay (Debounce)
     React.useEffect(() => {
-        let cancelled = false;
+        // Bei jedem Tippen 300ms warten,
+        // dann runSearch() aufrufen.
+        const handle = setTimeout(() => {
+            runSearch(query);
+        }, 300);
 
-        (async () => {
-            setLoading(true);
-            setError(null);
-            try {
-                const page = await listDocuments(0, 20);
-                if (!cancelled) setItems(page.items.map(mapToCardItem));
-            } catch (e) {
-                console.warn("List endpoint missing, using mock data. Error:", e);
-                if (!cancelled) setItems(mockResults.map(mapToCardItem));
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
-        })();
+        // Wenn der User weiter tippt, Timer abbrechen
+        return () => clearTimeout(handle);
+    }, [query]);
 
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+
+    //React.useEffect(() => {
+    //    let cancelled = false;
+
+    //    (async () => {
+    //        setLoading(true);
+    //        setError(null);
+    //        try {
+    //            const page = await listDocuments(0, 20);
+    //            if (!cancelled) setItems(page.items.map(mapToCardItem));
+    //        } catch (e) {
+    //            console.warn("List endpoint missing, using mock data. Error:", e);
+    //            if (!cancelled) setItems(mockResults.map(mapToCardItem));
+    //        } finally {
+    //            if (!cancelled) setLoading(false);
+    //        }
+    //    })();
+
+    //    return () => {
+    //        cancelled = true;
+    //    };
+    //}, []);
 
     function handleOpen(item) {
         setOpenItem(item);
@@ -516,6 +531,41 @@ export default function Dashboard() {
         }
     }
 
+    async function runSearch(currentQuery) {
+        const q = currentQuery.trim();
+
+        // Wenn leer -> normale Liste laden
+        if (!q) {
+            setLoading(true);
+            setError(null);
+            try {
+                const page = await listDocuments(0, 20);
+                setItems(page.items.map(mapToCardItem));
+            } catch (e) {
+                console.warn("List endpoint failed in search reset:", e);
+                setError(e);
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
+
+        // Suche in Backend
+        setLoading(true);
+        setError(null);
+        try {
+            const results = await searchDocuments(q);
+            setItems(results.map(mapToCardItem));
+        } catch (e) {
+            console.error("Search failed", e);
+            setError(e);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+
+
     return (
         <div className="min-h-screen bg-background text-foreground">
             {/* Top bar */}
@@ -525,8 +575,10 @@ export default function Dashboard() {
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                             <Input
-                                placeholder="Search documents (full-text & fuzzy)…"
+                                placeholder="Search documents…"
                                 className="pl-9 rounded-xl"
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}   // nur noch onChange
                             />
                         </div>
                         <Button variant="outline" className="rounded-xl gap-2" type="button">

@@ -9,16 +9,20 @@ using DocumentManagementSystem.Middleware;
 using DocumentManagementSystem.DAL;
 using DocumentManagementSystem.Infrastructure.Services;
 using DocumentManagementSystem.Infrastructure.Services.GenAI;
+using DocumentManagementSystem.Elasticsearch.DependencyInjection; 
 
 internal class Program
 {
     private static async Task Main(string[] args)
     {
+        // Serilog-Bootstrap mit Konfiguration aus appsettings + ENV
+        var serilogConfig = new ConfigurationBuilder()
+            .AddJsonFile("appsettings.json", optional: true)
+            .AddEnvironmentVariables()
+            .Build();
+
         Log.Logger = new LoggerConfiguration()
-            .ReadFrom.Configuration(new ConfigurationBuilder()
-                .AddJsonFile("appsettings.json", optional: true)
-                .AddEnvironmentVariables()
-                .Build())
+            .ReadFrom.Configuration(serilogConfig)
             .Enrich.FromLogContext()
             .CreateLogger();
 
@@ -26,22 +30,19 @@ internal class Program
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            // Konfiguration für die App (nochmal, jetzt für builder.Configuration)
             builder.Configuration
                 .AddJsonFile("appsettings.json", optional: true)
                 .AddEnvironmentVariables();
 
+            // Serilog als Logging-Provider
             builder.Host.UseSerilog();
 
-
-            // -- GenAI: Gemini -------
-
+            // ---------- GenAI: Gemini ----------
             builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection("Gemini"));
-
             builder.Services.AddHttpClient<IGenAiService, GeminiService>();
 
-
-
-            // ---- Normalize/Map config keys so either GARAGE_S3_* or S3_* works ----
+            // ---------- Normalize/Map config keys so either GARAGE_S3_* or S3_* works ----------
             var map = new Dictionary<string, string?>();
             void Map(string target, string source)
             {
@@ -50,6 +51,7 @@ internal class Program
                 if (!string.IsNullOrWhiteSpace(src) && string.IsNullOrWhiteSpace(dst))
                     map[target] = src;
             }
+
             Map("S3_ENDPOINT", "GARAGE_S3_ENDPOINT");
             Map("S3_REGION", "GARAGE_S3_REGION");
             Map("S3_BUCKET", "GARAGE_S3_BUCKET");
@@ -64,6 +66,10 @@ internal class Program
             builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
             builder.Services.AddScoped<ITagRepository, TagRepository>();
             builder.Services.AddScoped<DocumentService>();
+
+            // ---------- Elasticsearch (NEU) ----------
+            // nutzt Einstellungen aus appsettings.json / .env (Elasticsearch:Uri bzw. Elasticsearch__Uri)
+            builder.Services.AddElasticsearchServices(builder.Configuration);
 
             // ---------- RabbitMQ ----------
             // Als Interface registrieren; liest aus ENV oder appsettings (optional)
@@ -93,7 +99,7 @@ internal class Program
             {
                 var origins = (builder.Configuration["FRONTEND_ORIGINS"]
                                ?? "http://localhost:5173;http://localhost:3000")
-                              .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
                 opts.AddPolicy(AllowFrontend, p => p
                     .WithOrigins(origins)
@@ -142,6 +148,7 @@ internal class Program
                 }
             }
 
+            // ---------- Middleware-Pipeline ----------
             if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName == "Docker")
             {
                 app.UseSwagger();

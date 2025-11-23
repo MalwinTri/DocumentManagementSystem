@@ -17,11 +17,14 @@ export async function updateDocument(id: string, payload: Partial<DocumentDto>) 
     return api.patch<DocumentDto>(`/api/Documents/${id}`, payload);
 }
 
-
 export async function listDocuments(page = 0, size = 20): Promise<PageDto<DocumentDto>> {
   return api.get<PageDto<DocumentDto>>(`/api/Documents?page=${page}&size=${size}`);
 }
 
+export async function searchDocuments(query: string): Promise<DocumentDto[]> {
+    const params = new URLSearchParams({ query });
+    return api.get<DocumentDto[]>(`/api/Documents/search?${params.toString()}`);
+}
 
 export async function getDocument(id: string) {
   return api.get<DocumentDto>(`/api/Documents/${id}`);
