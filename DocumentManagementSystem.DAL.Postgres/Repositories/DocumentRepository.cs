@@ -38,14 +38,22 @@ public class DocumentRepository(DmsDbContext db, ILogger<DocumentRepository> log
     }
 
     public Task<Document?> GetAsync(Guid id, CancellationToken ct = default) =>
-        _db.Documents
-           .Include(d => d.Tags)
-           .FirstOrDefaultAsync(d => d.Id == id, ct);
+    _db.Documents
+       .Include(d => d.Tags)
+       .Include(d => d.Metadata)
+       .Include(d => d.ExtractedEntities)
+       .Include(d => d.Embedding)
+       .AsSplitQuery()
+       .FirstOrDefaultAsync(d => d.Id == id, ct);
 
     public IQueryable<Document> Query() =>
-        _db.Documents
-           .Include(d => d.Tags)
-           .AsQueryable();
+    _db.Documents
+       .Include(d => d.Tags)
+       .Include(d => d.Metadata)
+       .Include(d => d.ExtractedEntities)
+       .Include(d => d.Embedding)
+       .AsSplitQuery()
+       .AsQueryable();
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
     {

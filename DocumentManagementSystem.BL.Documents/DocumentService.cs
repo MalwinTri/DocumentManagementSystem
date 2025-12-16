@@ -94,22 +94,22 @@ public class DocumentService
 
             _logger.LogInformation("Document created successfully. DocumentId={DocumentId}", added.Id);
 
-            try
-            {
-                var payload = new
-                {
-                    documentId = added.Id,
-                    title = added.Title,
-                    uploadedAt = DateTime.UtcNow
-                };
+            //try
+            //{
+            //    var payload = new
+            //    {
+            //        documentId = added.Id,
+            //        title = added.Title,
+            //        uploadedAt = DateTime.UtcNow
+            //    };
 
-                _logger.LogInformation("Enqueuing OCR message for DocumentId={DocumentId}", added.Id);
-                _mq.SendOcrMessage(payload);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to enqueue OCR message for DocumentId={DocumentId}", added.Id);
-            }
+            //    _logger.LogInformation("Enqueuing OCR message for DocumentId={DocumentId}", added.Id);
+            //    _mq.SendOcrMessage(payload);
+            //}
+            //catch (Exception ex)
+            //{
+            //    _logger.LogError(ex, "Failed to enqueue OCR message for DocumentId={DocumentId}", added.Id);
+            //}
 
             return added;
         }

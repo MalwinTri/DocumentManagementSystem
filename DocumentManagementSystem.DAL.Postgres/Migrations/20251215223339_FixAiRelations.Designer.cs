@@ -3,6 +3,7 @@ using System;
 using DocumentManagementSystem.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DocumentManagementSystem.Migrations
 {
     [DbContext(typeof(DmsDbContext))]
-    partial class DmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251215223339_FixAiRelations")]
+    partial class FixAiRelations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -28,29 +31,11 @@ namespace DocumentManagementSystem.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<int>("AiAttempts")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("AiLastError")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("AiNextAttemptAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("AiProcessedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
                         .HasColumnType("text");
-
-                    b.Property<DateTime?>("IndexedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("OcrCompletedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("OcrText")
                         .HasColumnType("text");
@@ -62,9 +47,6 @@ namespace DocumentManagementSystem.Migrations
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 

@@ -1,7 +1,11 @@
-using Serilog;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using Serilog;
+
 using DocumentManagementSystem.Database;
 using DocumentManagementSystem.Database.Repositories;
 using DocumentManagementSystem.BL.Documents;
@@ -9,20 +13,21 @@ using DocumentManagementSystem.Middleware;
 using DocumentManagementSystem.DAL;
 using DocumentManagementSystem.Infrastructure.Services;
 using DocumentManagementSystem.Infrastructure.Services.GenAI;
-using DocumentManagementSystem.Elasticsearch.DependencyInjection; 
+using DocumentManagementSystem.Elasticsearch.DependencyInjection;
 
 internal class Program
 {
     private static async Task Main(string[] args)
     {
-        // Serilog-Bootstrap mit Konfiguration aus appsettings + ENV
-        var serilogConfig = new ConfigurationBuilder()
+        // ---------- Bootstrap configuration (for Serilog before host build) ----------
+        var bootstrapConfig = new ConfigurationBuilder()
             .AddJsonFile("appsettings.json", optional: true)
+            .AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")}.json", optional: true)
             .AddEnvironmentVariables()
             .Build();
 
         Log.Logger = new LoggerConfiguration()
-            .ReadFrom.Configuration(serilogConfig)
+            .ReadFrom.Configuration(bootstrapConfig)
             .Enrich.FromLogContext()
             .CreateLogger();
 
@@ -30,13 +35,19 @@ internal class Program
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // Konfiguration für die App (nochmal, jetzt für builder.Configuration)
+            // ---------- App configuration ----------
             builder.Configuration
-                .AddJsonFile("appsettings.json", optional: true)
+                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+                .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
                 .AddEnvironmentVariables();
 
-            // Serilog als Logging-Provider
-            builder.Host.UseSerilog();
+            // ---------- Serilog (host logging) ----------
+            builder.Host.UseSerilog((ctx, services, cfg) =>
+            {
+                cfg.ReadFrom.Configuration(ctx.Configuration)
+                   .ReadFrom.Services(services)
+                   .Enrich.FromLogContext();
+            });
 
             // ---------- GenAI: Gemini ----------
             builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection("Gemini"));
@@ -60,34 +71,53 @@ internal class Program
             if (map.Count > 0) builder.Configuration.AddInMemoryCollection(map);
 
             // ---------- Database ----------
-            var connectionString = builder.Configuration.GetConnectionString("Default");
-            builder.Services.AddDbContext<DmsDbContext>(opt => opt.UseNpgsql(connectionString));
+            var connectionString =
+                builder.Configuration.GetConnectionString("Default")
+                ?? Environment.GetEnvironmentVariable("DMS_CONNECTION_STRING");
+
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException(
+                    "No database connection string found. Set ConnectionStrings:Default in appsettings.json " +
+                    "or set environment variable DMS_CONNECTION_STRING.");
+            }
+
+            builder.Services.AddDbContext<DmsDbContext>(opt =>
+            {
+                opt.UseNpgsql(connectionString, npgsql =>
+                {
+                    // optional but recommended: transient failure retry
+                    npgsql.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null);
+                });
+
+                opt.EnableDetailedErrors();
+            });
 
             builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
             builder.Services.AddScoped<ITagRepository, TagRepository>();
             builder.Services.AddScoped<DocumentService>();
 
-            // ---------- Elasticsearch (NEU) ----------
-            // nutzt Einstellungen aus appsettings.json / .env (Elasticsearch:Uri bzw. Elasticsearch__Uri)
+            // ---------- Elasticsearch ----------
             builder.Services.AddElasticsearchServices(builder.Configuration);
 
             // ---------- RabbitMQ ----------
-            // Als Interface registrieren; liest aus ENV oder appsettings (optional)
             builder.Services.AddSingleton<IRabbitMqService>(sp =>
             {
                 var cfg = sp.GetRequiredService<IConfiguration>();
                 var logger = sp.GetRequiredService<ILogger<RabbitMqService>>();
+
                 var host = cfg["Rabbit:Host"] ?? cfg["RABBIT_HOST"] ?? "rabbitmq";
                 var user = cfg["Rabbit:User"] ?? cfg["RABBIT_USER"] ?? "guest";
                 var pass = cfg["Rabbit:Password"] ?? cfg["RABBIT_PASSWORD"] ?? "guest";
                 var queue = cfg["Rabbit:Queue"] ?? cfg["RABBIT_QUEUE"] ?? "documents.ocr";
+
                 return new RabbitMqService(logger, host, user, pass, queue);
             });
 
             // ---------- S3 / Garage ----------
             builder.Services.AddSingleton<IGarageS3Service, GarageS3Service>();
 
-            // ---------- Upload size (z. B. 100 MB PDFs zulassen) ----------
+            // ---------- Upload size (e.g. 100 MB PDFs) ----------
             builder.Services.Configure<FormOptions>(o =>
             {
                 o.MultipartBodyLengthLimit = 100 * 1024 * 1024; // 100 MB
@@ -121,10 +151,17 @@ internal class Program
             var logger = app.Services.GetRequiredService<ILogger<Program>>();
             logger.LogInformation("Starting application in environment {Env}", app.Environment.EnvironmentName);
 
-            // ---------- DB Migrations mit Retry ----------
-            using (var scope = app.Services.CreateScope())
+            // ---------- DB Migrations (skip-able for dotnet ef) ----------
+            // Set env var SKIP_MIGRATIONS=true when running dotnet ef commands.
+            var skipMigrations =
+                builder.Configuration.GetValue<bool>("SkipMigrations") ||
+                string.Equals(Environment.GetEnvironmentVariable("SKIP_MIGRATIONS"), "true", StringComparison.OrdinalIgnoreCase);
+
+            if (!skipMigrations)
             {
+                using var scope = app.Services.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<DmsDbContext>();
+
                 const int maxRetries = 5;
                 for (var i = 1; i <= maxRetries; i++)
                 {
@@ -137,18 +174,17 @@ internal class Program
                     }
                     catch (Exception ex) when (i < maxRetries)
                     {
-                        logger.LogWarning(ex, "Migration attempt {Attempt} failed, will retry", i);
+                        logger.LogWarning(ex, "Migration attempt {Attempt} failed, retrying...", i);
                         await Task.Delay(TimeSpan.FromSeconds(2 * i));
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Migrations failed after {Attempt} attempts", i);
-                        throw;
                     }
                 }
             }
+            else
+            {
+                logger.LogInformation("Skipping DB migrations (SkipMigrations/SKIP_MIGRATIONS enabled).");
+            }
 
-            // ---------- Middleware-Pipeline ----------
+            // ---------- Middleware pipeline ----------
             if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName == "Docker")
             {
                 app.UseSwagger();
@@ -157,6 +193,7 @@ internal class Program
 
             app.UseCors(AllowFrontend);
 
+            // In Docker you usually don't want HTTPS redirection in dev setups
             if (!app.Environment.IsEnvironment("Docker"))
             {
                 app.UseHttpsRedirection();
@@ -164,7 +201,6 @@ internal class Program
 
             app.UseMiddleware<ErrorHandlingMiddleware>();
             app.UseAuthorization();
-
             app.MapControllers();
 
             logger.LogInformation("Application started and listening");
