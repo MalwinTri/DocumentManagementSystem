@@ -1,5 +1,6 @@
 ﻿using DocumentManagementSystem.BL.Documents;
 using DocumentManagementSystem.Dto;
+using DocumentManagementSystem.Elasticsearch.Services;
 using DocumentManagementSystem.Exceptions;
 using DocumentManagementSystem.Infrastructure.Services;
 using DocumentManagementSystem.Mapping;
@@ -13,16 +14,19 @@ namespace DocumentManagementSystem.Controllers;
 public class DocumentsController : ControllerBase
 {
     private readonly DocumentService _service;
-    private readonly IRabbitMqService _rabbitMqService;   
+    private readonly IRabbitMqService _rabbitMqService;
+    private readonly IDocumentSearchService _documentSearchService;
     private readonly ILogger<DocumentsController> _logger;
 
     public DocumentsController(
         DocumentService service,
-        IRabbitMqService rabbitMqService,                 
+        IRabbitMqService rabbitMqService,
+        IDocumentSearchService documentSearchService,   // 🔹 hier rein
         ILogger<DocumentsController> logger)
     {
         _service = service;
         _rabbitMqService = rabbitMqService;
+        _documentSearchService = documentSearchService; // 🔹 Feld setzen
         _logger = logger;
     }
 
@@ -137,4 +141,51 @@ public class DocumentsController : ControllerBase
     [HttpPut("{id:guid}")]
     public Task<IActionResult> Put([FromRoute] Guid id, [FromBody] DocumentUpdateDto dto, CancellationToken ct)
     => Update(id, dto, ct);
+
+    [HttpGet("search")]
+    public async Task<IActionResult> Search(
+    [FromQuery] string query,
+    CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            throw new ValidationException(detail: "Query must not be empty.");
+
+        _logger.LogInformation("Search requested. Query=\"{Query}\"", query);
+
+        // 1) Elasticsearch fragen
+        var hits = await _documentSearchService.SearchAsync(query, ct);
+
+        // Treffer-Ids in Guids umwandeln
+        var ids = hits
+            .Select(h => Guid.TryParse(h.Id, out var id) ? id : (Guid?)null)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .ToList();
+
+        if (ids.Count == 0)
+        {
+            _logger.LogInformation("Search returned no hits for Query=\"{Query}\"", query);
+            return Ok(Array.Empty<DocumentResponseDto>());
+        }
+
+        // 2) Passende Documents aus der DB holen
+        var documents = await _service.GetByIdsAsync(ids, ct);
+        var docsById = documents.ToDictionary(d => d.Id);
+
+        // 3) In derselben Reihenfolge wie ES-Hits auf DTO mappen
+        var results = new List<DocumentResponseDto>();
+
+        foreach (var hit in hits)
+        {
+            if (!Guid.TryParse(hit.Id, out var docId)) continue;
+            if (!docsById.TryGetValue(docId, out var doc)) continue;
+
+            results.Add(DocumentMapper.ToDto(doc));
+        }
+
+        _logger.LogInformation("Search returning {Count} documents for Query=\"{Query}\"", results.Count, query);
+
+        return Ok(results);
+    }
+
 }

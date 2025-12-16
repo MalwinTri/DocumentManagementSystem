@@ -40,6 +40,8 @@
       Gemini__ApiKey: ${Gemini__ApiKey}
       Gemini__BaseUrl: ${Gemini__BaseUrl}
       Gemini__Model: ${Gemini__Model}
+      Elasticsearch__Uri: ${Elasticsearch__Uri}
+
     ports: ["8080:8080"]
     depends_on:
       db:
@@ -125,12 +127,26 @@
       Gemini__ApiKey: ${Gemini__ApiKey}
       Gemini__BaseUrl: ${Gemini__BaseUrl}
       Gemini__Model: ${Gemini__Model}
+      Elasticsearch__Uri: ${Elasticsearch__Uri}
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.0.0
+    container_name: documentmanagementsystem-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+ 
 volumes:
   dms-data:
   garage-meta:
   garage-data:
+  es-data:

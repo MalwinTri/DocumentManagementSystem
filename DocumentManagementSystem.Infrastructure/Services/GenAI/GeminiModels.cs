@@ -3,6 +3,9 @@
     public class GeminiRequest
     {
         public List<GeminiContent> Contents { get; set; } = new();
+
+        // NEU: optional config (für JSON extraction)
+        public GeminiGenerationConfig? GenerationConfig { get; set; }
     }
 
     public class GeminiContent
