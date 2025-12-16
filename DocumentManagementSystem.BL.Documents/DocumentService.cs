@@ -1,5 +1,4 @@
-﻿using DocumentManagementSystem.Services;
-using DocumentManagementSystem.Models;
+﻿using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using DocumentManagementSystem.Exceptions;
@@ -13,15 +12,15 @@ public class DocumentService
     private readonly IDocumentRepository _docRepo;
     private readonly ITagRepository _tagRepo;
     private readonly ILogger<DocumentService> _logger;
-    private readonly RabbitMqService _mq;
-    private readonly GarageS3Service _garageS3;
+    private readonly IRabbitMqService _mq;
+    private readonly IGarageS3Service _garageS3;
 
     public DocumentService(
         IDocumentRepository docRepo,
         ITagRepository tagRepo,
         ILogger<DocumentService> logger,
-        RabbitMqService mq,
-        GarageS3Service garageS3)
+        IRabbitMqService mq,
+        IGarageS3Service garageS3)
     {
         _docRepo = docRepo;
         _tagRepo = tagRepo;
@@ -34,7 +33,7 @@ public class DocumentService
         string title,
         string? description,
         List<string>? tags,
-        Stream? pdfStream, // NEU
+        Stream? pdfStream, 
         CancellationToken ct = default)
     {
         _logger.LogInformation("CreateAsync started. Title=\"{Title}\", IncomingTags={TagCount}", title, tags?.Count ?? 0);
@@ -122,11 +121,12 @@ public class DocumentService
     }
 
     public async Task<Document?> UpdateAsync(
-        Guid id,
-        string? title,
-        string? description,
-        List<string>? tags,
-        CancellationToken ct = default)
+    Guid id,
+    string? title,
+    string? description,
+    List<string>? tags,
+    string? summary,                     // <= NEU
+    CancellationToken ct = default)
     {
         _logger.LogInformation("UpdateAsync started for DocumentId={DocumentId}", id);
 
@@ -163,10 +163,18 @@ public class DocumentService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to get or create tag '{TagName}' while updating DocumentId={DocumentId}", raw, id);
+                    _logger.LogError(ex,
+                        "Failed to get or create tag '{TagName}' while updating DocumentId={DocumentId}",
+                        raw, id);
                     throw;
                 }
             }
+        }
+
+        if (summary is not null)
+        {
+            _logger.LogDebug("UpdateAsync: updating Summary for DocumentId={DocumentId}", id);
+            doc.Summary = summary;
         }
 
         try
@@ -181,6 +189,8 @@ public class DocumentService
             throw;
         }
     }
+
+
 
     public Task<Document?> GetAsync(Guid id, CancellationToken ct = default)
     {

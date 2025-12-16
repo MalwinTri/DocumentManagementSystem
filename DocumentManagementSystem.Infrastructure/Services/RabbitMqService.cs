@@ -3,9 +3,9 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 
-namespace DocumentManagementSystem.Services;
+namespace DocumentManagementSystem.Infrastructure.Services;
 
-public class RabbitMqService
+public class RabbitMqService : IRabbitMqService
 {
     private readonly ILogger<RabbitMqService> _logger;
     private readonly ConnectionFactory _factory;

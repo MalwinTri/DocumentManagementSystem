@@ -7,25 +7,21 @@ export type DocumentDto = {
   author?: string | null;
   tags?: string[];
   createdAt?: string; 
+  ocrText?: string | null;  
+  summary?: string | null; 
 };
 
 export type PageDto<T> = { items: T[]; total: number; page: number; size: number };
 
-// api/documents.ts
 export async function updateDocument(id: string, payload: Partial<DocumentDto>) {
-    // payload: { title?, description?, tags? }
     return api.patch<DocumentDto>(`/api/Documents/${id}`, payload);
 }
 
 
-// Variante A: existiert ein Paging-Endpunkt (z.B. GET /api/Documents?page=0&size=10)
 export async function listDocuments(page = 0, size = 20): Promise<PageDto<DocumentDto>> {
-  // Wenn nicht vorhanden -> wirft 404 und fällt in Variante B zurück (siehe Hook unten)
   return api.get<PageDto<DocumentDto>>(`/api/Documents?page=${page}&size=${size}`);
 }
 
-// Variante B: Fallback – wenn nur GET by id existiert, kannst du hier vorerst mocken
-// oder später austauschen, sobald dein List-Endpunkt da ist.
 
 export async function getDocument(id: string) {
   return api.get<DocumentDto>(`/api/Documents/${id}`);

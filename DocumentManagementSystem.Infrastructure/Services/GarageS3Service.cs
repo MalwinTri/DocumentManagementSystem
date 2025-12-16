@@ -2,13 +2,10 @@ using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.Runtime;
 using Microsoft.Extensions.Configuration;
-using System;
-using System.IO;
-using System.Threading.Tasks;
 
 namespace DocumentManagementSystem.Infrastructure.Services
 {
-    public class GarageS3Service
+    public class GarageS3Service : IGarageS3Service
     {
         private readonly IAmazonS3 _client;
         private readonly string _bucket;
@@ -20,23 +17,21 @@ namespace DocumentManagementSystem.Infrastructure.Services
             var accessKey = section["AccessKey"] ?? throw new ArgumentNullException("GarageS3:AccessKey");
             var secretKey = section["SecretKey"] ?? throw new ArgumentNullException("GarageS3:SecretKey");
             _bucket = section["Bucket"] ?? throw new ArgumentNullException("GarageS3:Bucket");
-            var region = section["Region"] ?? "garage";   
+            var region = section["Region"] ?? "garage";
 
             var credentials = new BasicAWSCredentials(accessKey, secretKey);
-
             var s3Config = new AmazonS3Config
             {
-                ServiceURL = endpoint,                                
+                ServiceURL = endpoint,
                 UseHttp = endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase),
-                ForcePathStyle = true,                                
-                AuthenticationRegion = region                         
+                ForcePathStyle = true,
+                AuthenticationRegion = region
             };
-
 
             _client = new AmazonS3Client(credentials, s3Config);
         }
 
-        public async Task UploadPdfAsync(string key, Stream pdfStream)
+        public async Task UploadPdfAsync(string key, Stream pdfStream, CancellationToken ct = default)
         {
             if (pdfStream == null) throw new ArgumentNullException(nameof(pdfStream));
             if (pdfStream.CanSeek) pdfStream.Position = 0;
@@ -47,24 +42,25 @@ namespace DocumentManagementSystem.Infrastructure.Services
                 Key = key,
                 InputStream = pdfStream,
                 ContentType = "application/pdf",
-                UseChunkEncoding = false   
+                UseChunkEncoding = false
             };
 
             if (pdfStream.CanSeek)
             {
-                req.Headers.ContentLength = pdfStream.Length; 
+                req.Headers.ContentLength = pdfStream.Length;
             }
 
-            await _client.PutObjectAsync(req);
+            await _client.PutObjectAsync(req, ct);
         }
 
-        public async Task<Stream> GetPdfAsync(string key)
+        public async Task<Stream> GetPdfAsync(string key, CancellationToken ct = default)
         {
             var resp = await _client.GetObjectAsync(new GetObjectRequest
             {
                 BucketName = _bucket,
                 Key = key
-            });
+            }, ct);
+
             return resp.ResponseStream;
         }
     }

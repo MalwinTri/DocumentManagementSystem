@@ -1,4 +1,4 @@
-﻿FROM node:20 AS build
+﻿FROM mirror.gcr.io/library/node:20 AS build
 WORKDIR /app
 
 COPY package*.json ./
@@ -9,7 +9,7 @@ COPY . .
 
 RUN npm run build
 
-FROM nginx:alpine AS runtime
+FROM mirror.gcr.io/library/nginx:alpine
 
 COPY --from=build /app/dist /usr/share/nginx/html
 

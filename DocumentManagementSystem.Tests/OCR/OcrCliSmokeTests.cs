@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Xunit;
 
-// Use fully qualified names to resolve CS0433 ambiguity
 public class OcrCliSmokeTests
 {
     [Fact]

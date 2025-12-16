@@ -7,5 +7,5 @@ public sealed class RabbitOptions
     public string Pass { get; set; } = "guest";
     public string Queue { get; set; } = "ocr-queue";
     public ushort Prefetch { get; set; } = 1;
-    public bool RequeueOnError { get; set; } = false; // bei DLQ: false
+    public bool RequeueOnError { get; set; } = false; 
 }

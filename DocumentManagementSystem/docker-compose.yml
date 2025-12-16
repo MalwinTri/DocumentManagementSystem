@@ -16,17 +16,30 @@
 
   api:
     build:
-      context: ..                                  # Repo-Root (wichtig!)
+      context: ..
       dockerfile: DocumentManagementSystem/Dockerfile
     container_name: dms-api
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
-      # Rabbit Publisher
       RABBIT_HOST: rabbitmq
       RABBIT_USER: guest
       RABBIT_PASS: guest
       RABBIT_QUEUE: ocr-queue
+
+      # Aus .env:
+      ConnectionStrings__Default: ${ConnectionStrings__Default}
+      GarageS3__Endpoint: ${GarageS3__Endpoint}
+      GarageS3__AccessKey: ${GarageS3__AccessKey}
+      GarageS3__SecretKey: ${GarageS3__SecretKey}
+      GarageS3__Bucket: ${GarageS3__Bucket}
+      GarageS3__Region: ${GarageS3__Region}
+      Ocr__Language: ${Ocr__Language}
+      Ocr__TessdataPrefix: ${Ocr__TessdataPrefix}
+      Ocr__Dpi: ${Ocr__Dpi}
+      Gemini__ApiKey: ${Gemini__ApiKey}
+      Gemini__BaseUrl: ${Gemini__BaseUrl}
+      Gemini__Model: ${Gemini__Model}
     ports: ["8080:8080"]
     depends_on:
       db:
@@ -36,7 +49,6 @@
       garage:
         condition: service_started
     restart: unless-stopped
-    # Keine Datei-Volumes mehr nötig
 
   ui:
     build:
@@ -60,20 +72,27 @@
 
   ocr-worker:
     build:
-      context: ..                                  # Repo-Root
+      context: ..
       dockerfile: OCR_Worker/Dockerfile
     container_name: dms-ocr-worker
     environment:
+      ConnectionStrings__Default: ${ConnectionStrings__Default}
+
       TESSDATA_PREFIX: /usr/share/tesseract-ocr/5/tessdata
-      # Rabbit Consumer
       RABBIT_HOST: rabbitmq
       RABBIT_QUEUE: ocr-queue
       RABBIT_PREFETCH: "1"
       RABBIT_ENABLE_DLQ: "true"
-    volumes:
-      # ⬇️ appsettings.json der API schreibgeschützt in den Worker geben
-      - ./appsettings.json:/config/appsettings.json:ro
-      # ✅ Garage-Zugang kommt aus der appsettings.json des Workers
+
+      # falls der Worker auch S3 / OCR aus ENV liest:
+      GarageS3__Endpoint: ${GarageS3__Endpoint}
+      GarageS3__AccessKey: ${GarageS3__AccessKey}
+      GarageS3__SecretKey: ${GarageS3__SecretKey}
+      GarageS3__Bucket: ${GarageS3__Bucket}
+      GarageS3__Region: ${GarageS3__Region}
+      Ocr__Language: ${Ocr__Language}
+      Ocr__TessdataPrefix: ${Ocr__TessdataPrefix}
+      Ocr__Dpi: ${Ocr__Dpi}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -86,12 +105,29 @@
     container_name: dms-garage
     command: ["/garage","--config","/etc/garage.toml","server"]
     ports:
-      - "3900:3900"        # S3 API
-      # - "3901:3901"      # optional: RPC vom Host aus
+      - "3900:3900"
     volumes:
       - ./garage-config/garage.toml:/etc/garage.toml:ro
       - garage-meta:/var/lib/garage/meta
-      - garage-data:/var/lib/garage/data               # persistente Daten
+      - garage-data:/var/lib/garage/data
+    restart: unless-stopped
+
+  genai-worker:
+    build:
+      context: ..
+      dockerfile: DocumentManagementSystem.GenAI_Worker/Dockerfile
+    container_name: dms-genai-worker
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+
+      # Connection + Gemini aus .env:
+      ConnectionStrings__Default: ${ConnectionStrings__Default}
+      Gemini__ApiKey: ${Gemini__ApiKey}
+      Gemini__BaseUrl: ${Gemini__BaseUrl}
+      Gemini__Model: ${Gemini__Model}
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

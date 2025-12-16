@@ -17,7 +17,9 @@ namespace DocumentManagementSystem.Migrations
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     Title = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     Description = table.Column<string>(type: "text", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    OCRText = table.Column<string>(type: "text", nullable: true), //neue entries für OCR und Summary
+                    Summary = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
                 {

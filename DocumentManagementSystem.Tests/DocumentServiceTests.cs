@@ -1,5 +1,4 @@
 using DocumentManagementSystem.Models;
-using DocumentManagementSystem.Services;
 using DocumentManagementSystem.Exceptions;
 using Moq;
 using DocumentManagementSystem.DAL;
@@ -15,14 +14,14 @@ namespace DocumentManagementSystem.Tests
             Mock<IDocumentRepository>? docRepo = null,
             Mock<ITagRepository>? tagRepo = null,
             ILogger<DocumentService>? logger = null,
-            Mock<RabbitMqService>? mq = null,
-            Mock<GarageS3Service>? garageS3 = null)
+            Mock<IRabbitMqService>? mq = null,
+            Mock<IGarageS3Service>? garageS3 = null)
         {
             docRepo ??= new Mock<IDocumentRepository>();
             tagRepo ??= new Mock<ITagRepository>();
             logger ??= new LoggerFactory().CreateLogger<DocumentService>();
-            mq ??= new Mock<RabbitMqService>();
-            garageS3 ??= new Mock<GarageS3Service>();
+            mq ??= new Mock<IRabbitMqService>();
+            garageS3 ??= new Mock<IGarageS3Service>();
             return new DocumentService(docRepo.Object, tagRepo.Object, logger, mq.Object, garageS3.Object);
         }
 
@@ -32,8 +31,8 @@ namespace DocumentManagementSystem.Tests
             var docRepo = new Mock<IDocumentRepository>();
             var tagRepo = new Mock<ITagRepository>();
             var logger = new Mock<ILogger<DocumentService>>();
-            var mq = new Mock<RabbitMqService>();
-            var garageS3 = new Mock<GarageS3Service>();
+            var mq = new Mock<IRabbitMqService>();
+            var garageS3 = new Mock<IGarageS3Service>();
             docRepo.Setup(r => r.AddAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
                    .ReturnsAsync((Document d, CancellationToken _) => d);
 
@@ -53,8 +52,8 @@ namespace DocumentManagementSystem.Tests
             var docRepo = new Mock<IDocumentRepository>();
             var tagRepo = new Mock<ITagRepository>();
             var logger = new Mock<ILogger<DocumentService>>();
-            var mq = new Mock<RabbitMqService>();
-            var garageS3 = new Mock<GarageS3Service>();
+            var mq = new Mock<IRabbitMqService>();
+            var garageS3 = new Mock<IGarageS3Service>();
             docRepo.Setup(r => r.GetAsync(docId, It.IsAny<CancellationToken>()))
                    .ReturnsAsync(doc);
 
@@ -93,8 +92,9 @@ namespace DocumentManagementSystem.Tests
             tagRepo.Setup(r => r.GetOrCreateAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                    .ReturnsAsync(new Tag());
             var logger = new LoggerFactory().CreateLogger<DocumentService>();
-            var garageS3 = new Mock<GarageS3Service>();
-            var service = CreateService(docRepo, tagRepo, logger, null, garageS3);
+            var garageS3 = new Mock<IGarageS3Service>();
+            var mq = new Mock<IRabbitMqService>();
+            var service = CreateService(docRepo, tagRepo, logger, mq, garageS3);
 
             var tags = new List<string> { "Tag1", "Tag2" };
             await service.CreateAsync("ValidTitle", "desc", tags, null);
