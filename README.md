@@ -455,10 +455,252 @@ Automatisches Tagging mit GemAI
 
 ---
 
-## Zusammenfassung
+### Architektur
 
-- Trennung von Backend und UI: ErhÃ¶ht FlexibilitÃ¤t und Wartbarkeit.
-- Containerisierung: Vereinfacht Setup, Testing und Deployment.
-- Moderne UI-Technologien: Schnelle Entwicklung, gutes Nutzererlebnis.
-- Interaktive, nutzerfreundliche OberflÃ¤che: Alle Kernfunktionen sind intuitiv erreichbar.
-- Asynchrone Verarbeitung (RabbitMQ): Grundlage fÃ¼r skalierbare AI- & OCR-Prozesse.
+```mermaid
+flowchart LR
+    UI[React UI<br/>DocumentManagementSystem.UI]
+    API[REST API<br/>DocumentManagementSystem.API]
+    DB[(PostgreSQL)]
+    S3[(Garage S3)]
+    MQ[(RabbitMQ)]
+    OCR[OCR Worker]
+    GENAI[GenAI Worker<br/>Google Gemini Integration]
+    GEMINI[(Google Gemini API)]
+
+    UI --> API
+    API --> DB
+    API --> S3
+    API --> MQ
+
+    MQ --> OCR
+    OCR --> S3
+    OCR --> DB
+
+    GENAI --> DB
+    GENAI --> GEMINI
+    GEMINI --> GENAI
+
+```
+
+```mermaid
+sequenceDiagram
+    participant UI as Web UI
+    participant API as REST API
+    participant MQ as RabbitMQ
+    participant S3 as Garage S3
+    participant OCR as OCR Worker
+    participant DB as PostgreSQL
+    participant GA as GenAI Worker
+    participant Gemini as Google Gemini
+
+    UI->>API: Upload Document
+    API->>S3: Store File
+    API->>DB: Insert Document Metadata
+    API->>MQ: Publish OCR Job
+
+    MQ->>OCR: Deliver Job
+    OCR->>S3: Download Document
+    OCR->>OCR: Perform OCR
+    OCR->>DB: Save Extracted Text (ocr_text)
+    OCR->>DB: Mark OCR_Completed = true
+
+    GA->>DB: Query documents WHERE summary is null AND ocr_text is not null
+    DB-->>GA: Return next document
+
+    GA->>Gemini: Send OCR Text
+    Gemini-->>GA: Return AI Summary
+
+    GA->>DB: Save Summary (summary field)
+
+    UI->>API: Request document details
+    API->>DB: Fetch including Summary
+    DB-->>API: Return full document DTO
+    API-->>UI: Display Summary
+```
+
+### Komponenten
+
+#### **DocumentManagementSystem.API**
+- ASP.NET Core REST API  
+- Funktionen:
+  - Dokument-Upload
+  - Auflisten von Dokumenten
+  - Aktualisieren von Metadaten (Titel, Tags, Summary)
+  - Bulk-Löschen
+- Summary wird im Document-DTO ausgegeben.
+
+#### **OCR_Worker**
+- Konsumiert Nachrichten aus RabbitMQ (`ocr-queue`)
+- Lädt Dokumente aus Garage (S3)
+- Führt OCR auf PDF/PNG/JPG durch
+- Speichert extrahierten Text in der Datenbank
+- Markiert Dokumente als *OCR abgeschlossen*
+
+#### **GenAI_Worker (`DocumentManagementSystem.GenAI_Worker`)**
+- **Neuer Worker in Sprint 5**
+- Periodisches Polling der Datenbank:
+  - Dokumente mit OCR-Text  
+  - aber ohne Summary
+- Sendet den Text an **Google Gemini**
+- Speichert die generierte Zusammenfassung in der Datenbank
+
+#### **UI – React / Vite / Tailwind**
+- Neues Panel für **„AI Summary“**
+- Editierbare Felder für:
+  - Titel  
+  - Tags  
+  - AI-Zusammenfassung  
+- Unterstützt Bulk-Aktionen wie Sammellöschen
+
+#### **Infrastruktur**
+- PostgreSQL  
+- RabbitMQ  
+- Garage (S3-kompatibel)  
+- Docker Compose für Orchestrierung
+
+---
+
+### GenAI-Integration / Google Gemini
+
+### Konfiguration
+
+Konfiguration erfolgt über `appsettings.json` (ohne Secrets) und Umgebungsvariablen.
+
+#### `appsettings.json` (Auszug)
+
+```json
+"Gemini": {
+  "ApiKey": "",
+  "BaseUrl": "https://generativelanguage.googleapis.com/v1beta",
+  "Model": "models/gemini-2.5-flash"
+}
+```
+
+---
+# Sprint 6 -  ELK, Use Cases
+ 
+
+## Architektur / Verarbeitungspipeline 
+
+1. **Upload**
+   - `DocumentService.CreateAsync(...)` speichert:
+     - Dokument-Metadaten in PostgreSQL
+     - PDF nach Garage S3 als `{DocumentId}.pdf`
+   - OCR Queue ist in deinem aktuellen Code teilweise auskommentiert (CreateAsync enthält einen auskommentierten MQ-Teil).
+
+2. **OCR**
+   - OCR schreibt Ergebnis in `Documents.OcrText` (und optional `OcrCompletedAt`)
+
+3. **GenAI Worker (Gemini)**
+   - Worker zieht „fällige“ Dokumente aus der DB:
+     - `OcrText != null`
+     - Summary/Metadata/Embedding fehlt
+     - Retry-Backoff beachtet (`AiNextAttemptAt`, `AiAttempts`)
+   - Schritte:
+     1) Summary erzeugen (`GenerateSummaryAsync`)
+     2) Metadata + Entities extrahieren (`ExtractMetadataAsync`)
+     3) Auto-Tags hinzufügen (`AddTagIfMissingAsync`)
+     4) Embedding erzeugen (`GenerateEmbeddingAsync`)
+   - Wenn alles fertig:
+     - `AiProcessedAt` gesetzt
+
+4. **Elasticsearch Indexing (einmalig)**
+   - Wenn `AiProcessedAt != null` und `IndexedAt == null`:
+     - `doc.ToDocumentIndex()`
+     - `IndexDocumentAsync(...)`
+     - `IndexedAt` wird gesetzt
+
+---
+
+## Elasticsearch
+
+### Index Model (`DocumentIndex`)
+Index: **`documents`**
+
+Felder:
+- `Id` (Document.Id als String)
+- `Title`
+- `Content` = OCR Text (`OcrText`)
+- `Summary`
+- `Tags` (Tag-Namen)
+- `UploadedAt` (CreatedAt)
+
+Mapping passiert hier:
+- `DocumentIndexMapper.ToDocumentIndex(Document document)`
+
+Indexing passiert hier:
+- `SearchIndexService.IndexDocumentAsync(...)`
+
+---
+
+## Unique Feature 
+### 1) Automatische Metadatenextraktion (KI)
+Aus `OcrText` wird automatisch extrahiert und in **`DocumentMetadata`** gespeichert:
+z.B.:
+- Dokumenttyp: `INVOICE | CONTRACT | REMINDER | OTHER`
+- IssueDate (DateOnly?)
+- InvoiceNumber
+- Iban
+- RawJson (für Debugging)
+
+**Wozu?**
+- Dokumente sind sofort strukturiert (Filter/Anzeige ohne manuelle Eingabe)
+
+### 2) Entities (Personen/Firmen/Orte)
+KI extrahiert Listen und speichert sie in **`ExtractedEntities`**:
+- `Type`: PERSON / ORG / LOCATION
+- `Value`: erkannter Wert
+
+**Wozu?**
+- Du kannst später nach Firma/Person/Ort filtern oder im UI anzeigen
+
+### 3) Intelligentes Auto-Tagging
+Basierend auf Metadaten/Entities/Keywords werden Tags automatisch ergänzt:
+- `type:INVOICE`
+- `year:2025`
+- `Q1-2025`
+- `org:<name>`
+- `kw:<keyword>`
+
+**Wozu?**
+- Einheitliche Tags ohne manuelles Tippen
+- Schnelles Filtern in der UI
+
+### 4) Embeddings
+Für jedes Dokument wird ein Embedding erstellt und in **`DocumentEmbedding`** gespeichert:
+- `Model`
+- `Dims`
+- `VectorJson`
+
+**Wozu?**
+- Basis für “Ähnliche Dokumente” / semantische Suche (auch wenn Wörter unterschiedlich sind)
+
+---
+
+## Datenbank-Status
+### Tabelle `Documents` enthält u.a.:
+- `Title`, `Description`, `CreatedAt`, `UpdatedAt`
+- `OcrText`, `OcrCompletedAt`
+- `Summary`, `AiProcessedAt`
+- `IndexedAt`
+- Backoff/Retry: `AiNextAttemptAt`, `AiAttempts`, `AiLastError`
+
+### Neue Tabellen:
+- `DocumentMetadatas` (1:1)
+- `ExtractedEntities` (1:n)
+- `DocumentEmbeddings` (1:1)
+- `Tags` + Join Tabelle `DocumentTag`
+
+---
+
+## API DTO Output
+`DocumentResponseDto` enthält:
+- `OcrText`, `Summary`
+- `Metadata` (`DocumentMetadataDto`)
+- `Entities` (`ExtractedEntityDto`)
+- `Embedding` (`DocumentEmbeddingDto`)
+
+Damit ist euer Unique Feature direkt sichtbar in der API Response.
+
+---
