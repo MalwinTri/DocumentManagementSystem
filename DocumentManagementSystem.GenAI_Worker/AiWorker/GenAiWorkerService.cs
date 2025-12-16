@@ -16,7 +16,7 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
         private readonly IGenAiService _genAiService;
         private readonly ISearchIndexService _searchIndexService;
 
-        // ✅ globaler Cooldown nach 429, damit du nicht andere Docs weiter spamst
+        // globaler Cooldown nach 429, damit du nicht andere Docs weiter spamst
         private DateTime? _pauseUntilUtc;
 
         public GenAiWorkerService(
@@ -39,7 +39,7 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
             {
                 var now = DateTime.UtcNow;
 
-                // ✅ global Pause nach RateLimit
+                // global Pause nach RateLimit
                 if (_pauseUntilUtc is DateTime pause && pause > now)
                 {
                     await Task.Delay(pause - now, stoppingToken);
@@ -50,9 +50,9 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
 
                 try
                 {
-                    // ✅ Nur "fällige" Docs holen (Backoff beachten)
+                    // Nur "fällige" Docs holen (Backoff beachten)
                     doc = await _dbContext.Documents
-                        .AsSplitQuery() // ✅ EF Warning "MultipleCollectionInclude" entschärfen
+                        .AsSplitQuery() // EF Warning "MultipleCollectionInclude" entschärfen
                         .Include(d => d.Tags)
                         .Include(d => d.Metadata)
                         .Include(d => d.ExtractedEntities)
@@ -75,7 +75,7 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
 
                     _logger.LogInformation("Processing document {DocumentId}", doc.Id);
 
-                    // ✅ Lease/Reservation: damit es nicht sofort wieder gepickt wird (auch bei 2 Worker-Instanzen hilfreich)
+                    //Lease/Reservation: damit es nicht sofort wieder gepickt wird 
                     doc.AiNextAttemptAt = now.AddMinutes(2);
                     doc.AiLastError = "IN_PROGRESS";
                     doc.UpdatedAt = now;
@@ -92,7 +92,7 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
 
                             var summary = await _genAiService.GenerateSummaryAsync(doc.OcrText!, stoppingToken);
 
-                            // ✅ WICHTIG: leeres Ergebnis = Failure -> Backoff!
+                            //  leeres Ergebnis = Failure -> Backoff!
                             if (string.IsNullOrWhiteSpace(summary))
                                 throw new InvalidOperationException("Gemini returned empty summary");
 
@@ -127,7 +127,7 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
 
                             var extraction = await _genAiService.ExtractMetadataAsync(doc.OcrText!, stoppingToken);
 
-                            // ✅ null Ergebnis = Failure -> Backoff!
+                            // null Ergebnis = Failure -> Backoff!
                             if (extraction == null)
                                 throw new InvalidOperationException("Gemini returned null metadata extraction");
 
@@ -208,7 +208,7 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
                             var embedText = $"{doc.Title}\n\n{doc.Summary ?? ""}\n\n{doc.OcrText}";
                             var vector = await _genAiService.GenerateEmbeddingAsync(embedText, stoppingToken);
 
-                            // ✅ leeres Ergebnis = Failure -> Backoff!
+                            // leeres Ergebnis = Failure -> Backoff!
                             if (vector == null || vector.Length == 0)
                                 throw new InvalidOperationException("Gemini returned empty embedding");
 
@@ -243,7 +243,7 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
                         }
                     }
 
-                    // ✅ Wenn alles fertig ist -> AiProcessedAt setzen + Reservation löschen
+                    // Wenn alles fertig ist -> AiProcessedAt setzen + Reservation löschen
                     if (doc.Summary != null && doc.Metadata != null && doc.Embedding != null && doc.AiProcessedAt == null)
                     {
                         doc.AiProcessedAt = DateTime.UtcNow;

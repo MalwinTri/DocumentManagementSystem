@@ -58,7 +58,7 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
                 {
                     Temperature = 0.2,
                     MaxOutputTokens = 250
-                    // ✅ KEIN ResponseSchema setzen (und dank JsonIgnore wird auch nichts Null mitgesendet)
+                    // KEIN ResponseSchema setzen (und dank JsonIgnore wird auch nichts Null mitgesendet)
                 }
             };
 
@@ -67,7 +67,7 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
             using var response = await PostJsonAsync(url, request, cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            // ✅ 429 sauber behandeln → Worker kann Backoff speichern
+            // 429 sauber behandeln → Worker kann Backoff speichern
             if (response.StatusCode == (HttpStatusCode)429)
                 throw new AiRateLimitException(TryParseRetryDelay(body) ?? TimeSpan.FromSeconds(60), body);
 
@@ -89,7 +89,7 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
 
             summary = summary?.Trim();
 
-            // ❗Wichtig: NICHT einfach null returnen, sonst spammt dein Worker wieder sofort.
+            // NICHT einfach null returnen, sonst spammt dein Worker wieder sofort.
             if (string.IsNullOrWhiteSpace(summary))
                 throw new InvalidOperationException("Gemini Summary returned empty text");
 

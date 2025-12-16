@@ -8,6 +8,5 @@ public class DocumentEmbedding
     public string Model { get; set; } = "gemini-embedding";
     public int Dims { get; set; } = 768;
 
-    // simplest persistence: json string with float array
     public string VectorJson { get; set; } = "[]";
 }
