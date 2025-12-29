@@ -16,10 +16,20 @@ public class DmsDbContext(DbContextOptions<DmsDbContext> options) : DbContext(op
     {
         base.OnModelCreating(mb);
 
-        // Tag unique
-        mb.Entity<Tag>()
-          .HasIndex(t => t.Name)
-          .IsUnique();
+        // Enable Postgres extension
+        mb.HasPostgresExtension("citext");
+
+        // Tags.Name: case-insensitive unique via citext
+        mb.Entity<Tag>(e =>
+        {
+            e.Property(t => t.Name)
+             .HasMaxLength(64)
+             .HasColumnType("citext")
+             .IsRequired();
+
+            e.HasIndex(t => t.Name)
+             .IsUnique();
+        });
 
         // DocumentMetadata 1:1
         mb.Entity<DocumentMetadata>()
