@@ -23,7 +23,6 @@ public record DocumentResponseDto(
     string? OcrText,
     string? Summary,
 
-    // --- NEU: Unique Feature sichtbar ---
     DocumentMetadataDto? Metadata,
     List<ExtractedEntityDto> Entities,
     DocumentEmbeddingDto? Embedding

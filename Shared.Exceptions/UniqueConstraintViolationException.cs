@@ -1,9 +1,10 @@
 ﻿namespace DocumentManagementSystem.Exceptions;
 
-public sealed class UniqueConstraintViolationException : RepositoryException
+public sealed class UniqueConstraintViolationException : AppException
 {
     public string? ConstraintName { get; }
     public object? Value { get; }
+    public string? Entity { get; }
 
     public UniqueConstraintViolationException(
         string message = "Unique constraint violated",
@@ -13,14 +14,10 @@ public sealed class UniqueConstraintViolationException : RepositoryException
         string? code = "unique_violation",
         string? detail = null,
         Exception? inner = null)
-        : base(message,
-               operation: "save_changes",
-               entity: entity,
-               code: code,
-               detail: detail,
-               inner: inner)
+        : base(message, code: code, detail: detail, inner: inner)
     {
         ConstraintName = constraintName;
         Value = value;
+        Entity = entity;
     }
 }

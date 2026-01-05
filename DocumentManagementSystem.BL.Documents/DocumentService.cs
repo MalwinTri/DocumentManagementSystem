@@ -1,9 +1,12 @@
-﻿using DocumentManagementSystem.Models;
+﻿using DocumentManagementSystem.DAL;
+using DocumentManagementSystem.Dto;
+using DocumentManagementSystem.Exceptions;
+using DocumentManagementSystem.Infrastructure.Services;
+using DocumentManagementSystem.Mapping;
+using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using DocumentManagementSystem.Exceptions;
-using DocumentManagementSystem.DAL;
-using DocumentManagementSystem.Infrastructure.Services;
+using System.Text.Json;
 
 namespace DocumentManagementSystem.BL.Documents;
 
@@ -33,7 +36,7 @@ public class DocumentService
         string title,
         string? description,
         List<string>? tags,
-        Stream? pdfStream, 
+        Stream? pdfStream,
         CancellationToken ct = default)
     {
         _logger.LogInformation("CreateAsync started. Title=\"{Title}\", IncomingTags={TagCount}", title, tags?.Count ?? 0);
@@ -43,10 +46,8 @@ public class DocumentService
         if (string.IsNullOrWhiteSpace(title) || title.Trim().Length < 3)
             errors["Title"] = new[] { "Title must be at least 3 characters." };
 
-        var cleanedTags = (tags ?? new List<string>())
-            .Where(t => !string.IsNullOrWhiteSpace(t))
-            .Select(t => t.Trim())
-            .ToList();
+        // ✅ Tags sauber machen: trim, spaces, maxlen 64, distinct (case-insensitive), max 10
+        var cleanedTags = CleanTags(tags);
 
         if (cleanedTags.Count > 10)
             errors["Tags"] = new[] { "No more than 10 tags allowed." };
@@ -121,12 +122,12 @@ public class DocumentService
     }
 
     public async Task<Document?> UpdateAsync(
-    Guid id,
-    string? title,
-    string? description,
-    List<string>? tags,
-    string? summary,                     
-    CancellationToken ct = default)
+        Guid id,
+        string? title,
+        string? description,
+        List<string>? tags,
+        string? summary,
+        CancellationToken ct = default)
     {
         _logger.LogInformation("UpdateAsync started for DocumentId={DocumentId}", id);
 
@@ -140,7 +141,7 @@ public class DocumentService
         if (!string.IsNullOrWhiteSpace(title))
         {
             _logger.LogDebug("UpdateAsync: updating Title for DocumentId={DocumentId}", id);
-            doc.Title = title;
+            doc.Title = title.Trim();
         }
 
         if (description is not null)
@@ -151,21 +152,32 @@ public class DocumentService
 
         if (tags is not null)
         {
-            _logger.LogDebug("UpdateAsync: replacing tags for DocumentId={DocumentId}. IncomingCount={Count}", id, tags.Count);
+            var cleanedTags = CleanTags(tags);
+
+            if (cleanedTags.Count > 10)
+                throw new ValidationException(errors: new Dictionary<string, string[]>
+                {
+                    ["Tags"] = new[] { "No more than 10 tags allowed." }
+                });
+
+            _logger.LogDebug(
+                "UpdateAsync: replacing tags for DocumentId={DocumentId}. IncomingCount={Count} CleanedCount={CleanedCount}",
+                id, tags.Count, cleanedTags.Count);
+
             doc.Tags.Clear();
-            foreach (var raw in tags)
+
+            foreach (var tagName in cleanedTags)
             {
-                if (string.IsNullOrWhiteSpace(raw)) continue;
                 try
                 {
-                    var tag = await _tagRepo.GetOrCreateAsync(raw, ct);
+                    var tag = await _tagRepo.GetOrCreateAsync(tagName, ct);
                     doc.Tags.Add(tag);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex,
                         "Failed to get or create tag '{TagName}' while updating DocumentId={DocumentId}",
-                        raw, id);
+                        tagName, id);
                     throw;
                 }
             }
@@ -189,8 +201,6 @@ public class DocumentService
             throw;
         }
     }
-
-
 
     public Task<Document?> GetAsync(Guid id, CancellationToken ct = default)
     {
@@ -235,11 +245,119 @@ public class DocumentService
         _logger.LogInformation("GetByIdsAsync requested for {Count} documents", idList.Count);
 
         var query = _docRepo.Query()
-            .Where(d => idList.Contains(d.Id)); // nutzt dein bestehendes Query()
+            .Where(d => idList.Contains(d.Id));
 
         var items = await query.ToListAsync(ct);
 
         _logger.LogInformation("GetByIdsAsync returned {Count} documents", items.Count);
         return items;
     }
+
+    // =========================
+    // ✅ Helpers
+    // =========================
+
+    private static List<string> CleanTags(List<string>? tags)
+    {
+        // - trim
+        // - collapse spaces
+        // - cut to 64
+        // - distinct case-insensitive
+        // - keep order as much as possible
+        var result = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var raw in tags ?? new List<string>())
+        {
+            var t = NormalizeTag(raw);
+            if (string.IsNullOrWhiteSpace(t)) continue;
+
+            if (t.Length > 64)
+                t = t[..64];
+
+            if (seen.Add(t))
+                result.Add(t);
+        }
+
+        return result;
+    }
+
+    private static string NormalizeTag(string? s)
+    {
+        // trim + mehrfach spaces weg
+        var t = (s ?? "").Trim();
+        if (t.Length == 0) return t;
+
+        // collapse whitespace to single spaces
+        while (t.Contains("  "))
+            t = t.Replace("  ", " ");
+
+        return t;
+    }
+
+    public async Task<IReadOnlyList<SimilarDocumentResponseDto>> GetSimilarAsync(
+    Guid id,
+    int take = 6,
+    CancellationToken ct = default)
+    {
+        var target = await _docRepo.GetAsync(id, ct);
+        if (target?.Embedding is null || string.IsNullOrWhiteSpace(target.Embedding.VectorJson))
+            return Array.Empty<SimilarDocumentResponseDto>();
+
+        var targetVec = ParseVector(target.Embedding.VectorJson);
+        if (targetVec.Length == 0)
+            return Array.Empty<SimilarDocumentResponseDto>();
+
+        var candidates = await _docRepo.Query()
+            .Where(d => d.Id != id && d.Embedding != null)
+            .Select(d => new { Doc = d, VecJson = d.Embedding!.VectorJson })
+            .ToListAsync(ct);
+
+        var scored = new List<SimilarDocumentResponseDto>();
+
+        foreach (var c in candidates)
+        {
+            var vec = ParseVector(c.VecJson);
+            if (vec.Length != targetVec.Length || vec.Length == 0) continue;
+
+            var score = CosineSimilarity(targetVec, vec);
+            if (score <= 0) continue;
+
+            scored.Add(new SimilarDocumentResponseDto
+            {
+                Document = DocumentMapper.ToDto(c.Doc),
+                Score = score
+            });
+        }
+
+        return scored
+            .OrderByDescending(x => x.Score)
+            .Take(Math.Clamp(take, 1, 50))
+            .ToList();
+    }
+
+    private static float[] ParseVector(string json)
+    {
+        try { return JsonSerializer.Deserialize<float[]>(json) ?? Array.Empty<float>(); }
+        catch { return Array.Empty<float>(); }
+    }
+
+    private static double CosineSimilarity(float[] a, float[] b)
+    {
+        double dot = 0, na = 0, nb = 0;
+
+        for (int i = 0; i < a.Length; i++)
+        {
+            var x = a[i];
+            var y = b[i];
+            dot += x * y;
+            na += x * x;
+            nb += y * y;
+        }
+
+        var denom = Math.Sqrt(na) * Math.Sqrt(nb);
+        if (denom <= 1e-12) return 0;
+        return dot / denom;
+    }
+
 }

@@ -1,5 +1,4 @@
 ﻿using DocumentManagementSystem.DAL;
-using DocumentManagementSystem.DAL.Postgres.Exceptions;       
 using DocumentManagementSystem.Exceptions;
 using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
@@ -16,19 +15,20 @@ public class TagRepository(DmsDbContext db, ILogger<TagRepository> logger) : ITa
 
     public async Task<Tag> GetOrCreateAsync(string name, CancellationToken ct = default)
     {
-        // DAL wirft keine BL-Exceptions -> Guard als ArgumentException
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Tag name is required.", nameof(name));
 
         var normalized = Normalize(name);
-        var normalizedLower = normalized.ToLower();
+
+        if (string.IsNullOrWhiteSpace(normalized))
+            throw new ArgumentException("Tag name is required.", nameof(name));
+
+        if (normalized.Length > 64)
+            normalized = normalized[..64];
 
         _logger.LogDebug("GetOrCreateAsync called for tag='{TagName}'", normalized);
 
-        // READ: no tracking, case-insensitive Vergleich via ToLower() (EF übersetzt zu LOWER(name)=...)
-        var existing = await _db.Tags
-            .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.Name.ToLower() == normalizedLower, ct);
+        var existing = await _db.Tags.FirstOrDefaultAsync(t => t.Name == normalized, ct);
 
         if (existing is not null)
         {
@@ -36,7 +36,6 @@ public class TagRepository(DmsDbContext db, ILogger<TagRepository> logger) : ITa
             return existing;
         }
 
-        // CREATE
         var tag = new Tag { Name = normalized };
         _db.Tags.Add(tag);
 
@@ -46,15 +45,11 @@ public class TagRepository(DmsDbContext db, ILogger<TagRepository> logger) : ITa
             _logger.LogInformation("Created new tag '{TagName}' (Id={Id})", tag.Name, tag.Id);
             return tag;
         }
-        // Unique-Verletzung -> versuche bestehenden Datensatz erneut zu laden
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg)
         {
             _db.Entry(tag).State = EntityState.Detached;
 
-            var loaded = await _db.Tags
-                .AsNoTracking()
-                .FirstOrDefaultAsync(t => t.Name.ToLower() == normalizedLower, ct);
-
+            var loaded = await _db.Tags.FirstOrDefaultAsync(t => t.Name == normalized, ct);
             if (loaded is not null) return loaded;
 
             throw new UniqueConstraintViolationException(
@@ -75,6 +70,25 @@ public class TagRepository(DmsDbContext db, ILogger<TagRepository> logger) : ITa
                 inner: ex
             );
         }
+    }
+    public async Task<IReadOnlyList<string>> SuggestAsync(string? q, int take = 20, CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var query = (q ?? "").Trim();
+
+        var tags = _db.Tags.AsNoTracking().AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            // Postgres case-insensitive contains
+            tags = tags.Where(t => EF.Functions.ILike(t.Name, $"%{query}%"));
+        }
+
+        return await tags
+            .OrderBy(t => t.Name)
+            .Select(t => t.Name)
+            .Take(take)
+            .ToListAsync(ct);
     }
 
     private static string Normalize(string? input)

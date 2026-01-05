@@ -11,17 +11,6 @@ namespace DocumentManagementSystem.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "OcrText",
-                table: "Documents",
-                type: "text",
-                nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "Summary",
-                table: "Documents",
-                type: "text",
-                nullable: true);
 
             migrationBuilder.CreateTable(
                 name: "DocumentEmbeddings",
@@ -107,26 +96,12 @@ namespace DocumentManagementSystem.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "DocumentEmbeddings");
+            migrationBuilder.DropTable(name: "DocumentEmbeddings");
+            migrationBuilder.DropTable(name: "DocumentMetadatas");
+            migrationBuilder.DropTable(name: "ExtractedEntities");
 
-            migrationBuilder.DropTable(
-                name: "DocumentMetadatas");
+            migrationBuilder.DropIndex(name: "IX_Tags_Name", table: "Tags");
 
-            migrationBuilder.DropTable(
-                name: "ExtractedEntities");
-
-            migrationBuilder.DropIndex(
-                name: "IX_Tags_Name",
-                table: "Tags");
-
-            migrationBuilder.DropColumn(
-                name: "OcrText",
-                table: "Documents");
-
-            migrationBuilder.DropColumn(
-                name: "Summary",
-                table: "Documents");
         }
     }
 }

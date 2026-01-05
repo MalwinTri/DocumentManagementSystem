@@ -4,10 +4,10 @@
     {
         Task<string?> GenerateSummaryAsync(string text, CancellationToken cancellationToken = default);
 
-        // NEU: strukturierte Extraktion (Metadaten + Entities + Keywords)
+        // strukturierte Extraktion (Metadaten + Entities + Keywords)
         Task<AiExtractionResult?> ExtractMetadataAsync(string text, CancellationToken cancellationToken = default);
 
-        // NEU: Embedding-Vektor für semantische Suche
+        // Embedding-Vektor für semantische Suche
         Task<float[]?> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default);
     }
 }

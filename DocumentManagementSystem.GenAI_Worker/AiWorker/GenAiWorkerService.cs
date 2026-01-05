@@ -50,7 +50,6 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
 
                 try
                 {
-                    // Nur "fällige" Docs holen (Backoff beachten)
                     doc = await _dbContext.Documents
                         .AsSplitQuery() // EF Warning "MultipleCollectionInclude" entschärfen
                         .Include(d => d.Tags)
@@ -333,7 +332,7 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
                 return;
 
             var lower = name.ToLowerInvariant();
-            var existing = await _dbContext.Tags.FirstOrDefaultAsync(t => t.Name.ToLower() == lower, ct);
+            var existing = await _dbContext.Tags.FirstOrDefaultAsync(t => t.Name == name, ct);
 
             if (existing == null)
             {

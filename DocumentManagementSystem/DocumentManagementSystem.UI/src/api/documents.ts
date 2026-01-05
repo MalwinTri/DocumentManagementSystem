@@ -51,3 +51,9 @@ export async function deleteDocumentsBulk(ids: string[]) {
         return { deleted: ids.length } as any;
     }
 }
+
+export async function getSimilarDocuments(id: string, take = 6) {
+    const res = await fetch(`/api/documents/${id}/similar?take=${take}`);
+    if (!res.ok) throw new Error("Failed to fetch similar documents");
+    return res.json();
+}

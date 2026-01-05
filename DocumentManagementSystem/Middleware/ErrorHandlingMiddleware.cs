@@ -1,19 +1,15 @@
-﻿using DocumentManagementSystem.DAL.Postgres.Exceptions;
-using Microsoft.AspNetCore.Http;
+﻿using DocumentManagementSystem.Exceptions;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using System.Text.Json;
-using DocumentManagementSystem.Exceptions;
+using System.Text.Json.Serialization;
 
 namespace DocumentManagementSystem.Middleware;
 
 public sealed class ErrorHandlingMiddleware
 {
-    private static readonly JsonSerializerOptions JsonOpts = new()
+    private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web)
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         WriteIndented = false
     };
 
@@ -34,15 +30,15 @@ public sealed class ErrorHandlingMiddleware
         {
             await _next(context);
         }
-        // häufige Spezialfälle VOR dem generischen Catch
         catch (BadHttpRequestException ex)
         {
-            await WriteProblem(context, MapBadRequest(context, ex), StatusCodes.Status400BadRequest, ex);
+            var pd = MapBadRequest(context, ex);
+            await WriteProblem(context, pd, StatusCodes.Status400BadRequest, ex);
         }
         catch (OperationCanceledException ex) when (context.RequestAborted.IsCancellationRequested)
         {
-            // 499 = Client Closed Request (nginx), ASP.NET hat keinen StatusCode-Const dafür
-            await WriteProblem(context, MapClientClosed(context, ex), 499, ex);
+            var pd = MapClientClosed(context);
+            await WriteProblem(context, pd, 499, ex);
         }
         catch (AppException ex)
         {
@@ -59,7 +55,8 @@ public sealed class ErrorHandlingMiddleware
                 Detail = _env.IsDevelopment() ? ex.ToString() : "An unexpected error occurred.",
                 Instance = context.Request.Path
             };
-            GetExtensions(pd)["traceId"] = context.TraceIdentifier;
+
+            pd.Extensions["traceId"] = context.TraceIdentifier;
 
             await WriteProblem(context, pd, StatusCodes.Status500InternalServerError, ex, logAsError: true);
         }
@@ -67,14 +64,15 @@ public sealed class ErrorHandlingMiddleware
 
     private async Task WriteProblem(HttpContext ctx, ProblemDetails pd, int statusCode, Exception ex, bool logAsError = false)
     {
-        // Logging
+        // Status konsistent setzen
+        pd.Status ??= statusCode;
+
         var level = logAsError || statusCode >= 500 ? LogLevel.Error :
                     statusCode >= 400 ? LogLevel.Warning : LogLevel.Information;
 
         _logger.Log(level, ex, "HTTP {Status} {Title}. Path={Path} TraceId={TraceId}",
             statusCode, pd.Title, ctx.Request.Path, ctx.TraceIdentifier);
 
-        // Wenn bereits gestartet: nichts mehr schreiben
         if (ctx.Response.HasStarted)
         {
             _logger.LogWarning("Response already started. Cannot write problem details.");
@@ -84,7 +82,6 @@ public sealed class ErrorHandlingMiddleware
         ctx.Response.StatusCode = statusCode;
         ctx.Response.ContentType = "application/problem+json";
 
-        // HEAD-Requests: keinen Body
         if (HttpMethods.IsHead(ctx.Request.Method))
             return;
 
@@ -99,7 +96,6 @@ public sealed class ErrorHandlingMiddleware
             NotFoundException => ("https://httpstatuses.com/404", "Resource not found", StatusCodes.Status404NotFound),
             ConflictException => ("https://httpstatuses.com/409", "Conflict", StatusCodes.Status409Conflict),
             UniqueConstraintViolationException => ("https://httpstatuses.com/409", "Unique constraint violated", StatusCodes.Status409Conflict),
-            RepositoryException => ("https://httpstatuses.com/500", "Data access error", StatusCodes.Status500InternalServerError),
             _ => ("about:blank", "Error", StatusCodes.Status500InternalServerError)
         };
 
@@ -114,20 +110,20 @@ public sealed class ErrorHandlingMiddleware
             Instance = ctx.Request.Path
         };
 
-        GetExtensions(pd)["traceId"] = ctx.TraceIdentifier;
+        pd.Extensions["traceId"] = ctx.TraceIdentifier;
 
         if (!string.IsNullOrWhiteSpace(ex.Code))
-            GetExtensions(pd)["code"] = ex.Code;
+            pd.Extensions["code"] = ex.Code;
 
         if (ex is ValidationException vex && vex.Errors?.Any() == true)
-            GetExtensions(pd)["errors"] = vex.Errors;
+            pd.Extensions["errors"] = vex.Errors;
 
         if (ex is NotFoundException nfx)
         {
             if (!string.IsNullOrWhiteSpace(nfx.Resource))
-                GetExtensions(pd)["resource"] = nfx.Resource;
+                pd.Extensions["resource"] = nfx.Resource;
             if (nfx.ResourceId is not null)
-                GetExtensions(pd)["id"] = nfx.ResourceId;
+                pd.Extensions["id"] = nfx.ResourceId;
         }
 
         return pd;
@@ -143,48 +139,23 @@ public sealed class ErrorHandlingMiddleware
             Detail = ex.Message,
             Instance = ctx.Request.Path
         };
-        GetExtensions(pd)["traceId"] = ctx.TraceIdentifier;
+
+        pd.Extensions["traceId"] = ctx.TraceIdentifier;
         return pd;
     }
 
-    private static ProblemDetails MapClientClosed(HttpContext ctx, OperationCanceledException ex)
+    private static ProblemDetails MapClientClosed(HttpContext ctx)
     {
         var pd = new ProblemDetails
         {
             Type = "about:blank",
             Title = "Client closed request",
-            Status = 499, // custom
+            Status = 499,
             Detail = "The request was aborted by the client.",
             Instance = ctx.Request.Path
         };
-        GetExtensions(pd)["traceId"] = ctx.TraceIdentifier;
-        return pd;
-    }
 
-    // Add this helper method to allow extensions on ProblemDetails
-    private static IDictionary<string, object> GetExtensions(ProblemDetails pd)
-    {
-        // Use a backing dictionary via reflection or create a new one if not present
-        // For simplicity, attach a dictionary via a property bag (Items) on ProblemDetails
-        // If you control ProblemDetails, consider adding an Extensions property directly
-        const string key = "__extensions";
-        if (pd is not null)
-        {
-            if (pd is IDictionary<string, object> dict)
-                return dict;
-            var itemsProp = pd.GetType().GetProperty("Items");
-            if (itemsProp != null)
-            {
-                var items = itemsProp.GetValue(pd) as IDictionary<object, object>;
-                if (items != null)
-                {
-                    if (!items.ContainsKey(key))
-                        items[key] = new Dictionary<string, object>();
-                    return (Dictionary<string, object>)items[key];
-                }
-            }
-        }
-        // fallback: create a new dictionary (not persisted)
-        return new Dictionary<string, object>();
+        pd.Extensions["traceId"] = ctx.TraceIdentifier;
+        return pd;
     }
 }
