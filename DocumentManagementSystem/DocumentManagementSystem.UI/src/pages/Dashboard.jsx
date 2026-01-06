@@ -58,14 +58,23 @@ function barClassesFromTags(tags) {
     return out.length ? out : ["bg-slate-400/40"];
 }
 
-// ---------- Dropzone ----------
+// ---------- Polling helpers ----------
+function isDocReady(dto) {
+    const summary = String(dto?.summary ?? "").trim();
+    const hasSummary = summary.length > 0 && summary !== "—";
+    const hasKw = Array.isArray(dto?.tags) && dto.tags.some((t) => String(t).toLowerCase().startsWith("kw:"));
+    return hasSummary && hasKw;
+}
+
+// ---------- Dropzone (Click + Drag & Drop) ----------
 function Dropzone({ onUploaded }) {
     const inputRef = React.useRef(null);
     const [busy, setBusy] = React.useState(false);
     const [msg, setMsg] = React.useState("");
+    const [dragging, setDragging] = React.useState(false);
+    const dragCounter = React.useRef(0);
 
-    async function onPickFile(e) {
-        const file = e.target.files?.[0];
+    async function uploadOne(file) {
         if (!file) return;
         setBusy(true);
         setMsg("");
@@ -83,14 +92,92 @@ function Dropzone({ onUploaded }) {
         }
     }
 
+    async function onPickFile(e) {
+        const file = e.target.files?.[0];
+        await uploadOne(file);
+    }
+
+    function onDragEnter(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current += 1;
+        setDragging(true);
+    }
+
+    function onDragLeave(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current -= 1;
+        if (dragCounter.current <= 0) {
+            dragCounter.current = 0;
+            setDragging(false);
+        }
+    }
+
+    function onDragOver(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        // wichtig: damit Drop erlaubt ist
+        e.dataTransfer.dropEffect = "copy";
+    }
+
+    async function onDrop(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current = 0;
+        setDragging(false);
+
+        if (busy) return;
+
+        const file = e.dataTransfer?.files?.[0];
+        await uploadOne(file);
+    }
+
     return (
-        <div className="flex flex-col items-center justify-center text-center border-2 border-dashed rounded-2xl py-16 px-6 bg-background">
-            <div className="flex items-center gap-3">
-                <input ref={inputRef} type="file" className="hidden" onChange={onPickFile} />
-                <Button className="rounded-xl" disabled={busy} onClick={() => inputRef.current?.click()} type="button">
+        <div
+            className={
+                "flex flex-col items-center justify-center text-center border-2 border-dashed rounded-2xl py-16 px-6 bg-background transition " +
+                (dragging ? "border-indigo-500/60 bg-indigo-500/5" : "")
+            }
+            onDragEnter={onDragEnter}
+            onDragLeave={onDragLeave}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+            role="button"
+            tabIndex={0}
+            onClick={() => !busy && inputRef.current?.click()}
+            onKeyDown={(e) => {
+                if ((e.key === "Enter" || e.key === " ") && !busy) inputRef.current?.click();
+            }}
+            aria-label="Upload document"
+        >
+            <div className="flex flex-col items-center gap-3">
+                <input
+                    ref={inputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={onPickFile}
+                    // wenn du wirklich NUR PDFs willst, lass das so. Sonst einfach weg.
+                    accept=".pdf,application/pdf"
+                />
+
+                <div className="text-sm text-muted-foreground">
+                    {dragging ? "Drop file to upload" : "Drag & drop a PDF here or click to select"}
+                </div>
+
+                <Button
+                    className="rounded-xl"
+                    disabled={busy}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        inputRef.current?.click();
+                    }}
+                    type="button"
+                >
                     {busy ? "Uploading…" : "Select file"}
                 </Button>
             </div>
+
             {msg && <div className="mt-3 text-sm text-muted-foreground">{msg}</div>}
         </div>
     );
@@ -113,16 +200,7 @@ function toTagSet(tagCounts) {
     return new Set((tagCounts ?? []).map((x) => x.tag));
 }
 
-function TagPanel({
-    tags,
-    selected,
-    disabledSet,
-    onToggle,
-    onClear,
-    showAllToggle,
-    showAll,
-    onShowAllChange,
-}) {
+function TagPanel({ tags, selected, disabledSet, onToggle, onClear, showAllToggle, showAll, onShowAllChange }) {
     const [tagQuery, setTagQuery] = React.useState("");
 
     const visible = React.useMemo(() => {
@@ -153,7 +231,6 @@ function TagPanel({
                 />
             </div>
 
-            {/* Optional: unavailable anzeigen */}
             {showAllToggle && (
                 <div className="flex items-center gap-2">
                     <Checkbox checked={showAll} onCheckedChange={(v) => onShowAllChange?.(!!v)} />
@@ -195,14 +272,7 @@ function TagPanel({
             </div>
 
             <div className="flex items-center justify-between pt-2">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-xl"
-                    onClick={onClear}
-                    disabled={selected.size === 0}
-                    type="button"
-                >
+                <Button variant="outline" size="sm" className="rounded-xl" onClick={onClear} disabled={selected.size === 0} type="button">
                     Clear
                 </Button>
             </div>
@@ -277,7 +347,12 @@ function ResultCard({ item, selected, onToggle, onOpen }) {
     const bars = barClassesFromTags(item?.tags);
 
     return (
-        <Card className={"relative rounded-2xl transition " + (selected ? "ring-2 ring-primary/50" : "hover:shadow-md hover:-translate-y-0.5")}>
+        <Card
+            className={
+                "relative rounded-2xl transition " +
+                (selected ? "ring-2 ring-primary/50" : "hover:shadow-md hover:-translate-y-0.5")
+            }
+        >
             <div className="absolute left-0 top-0 h-full w-1.5 overflow-hidden">
                 <div className="h-full w-full flex flex-col">
                     {bars.map((c) => (
@@ -400,7 +475,7 @@ function SimilarRow({ dto, score, onOpen }) {
 }
 
 // ---------- Detail Sheet ----------
-function RightDetailSheet({ openItem, open, onOpenChange, onDeleted, onUpdated, onOpenDoc }) {
+function RightDetailSheet({ openItem, open, onOpenChange, onDeleted, onUpdated, onOpenDoc, ensureLive }) {
     const confirm = useConfirm();
 
     const [detail, setDetail] = React.useState(null);
@@ -423,6 +498,8 @@ function RightDetailSheet({ openItem, open, onOpenChange, onDeleted, onUpdated, 
     React.useEffect(() => {
         if (!openItem?.id) return;
 
+        ensureLive?.(openItem.id); // wenn offen: automatisch aktuell halten
+
         (async () => {
             try {
                 const fresh = await getDocument(openItem.id);
@@ -438,7 +515,7 @@ function RightDetailSheet({ openItem, open, onOpenChange, onDeleted, onUpdated, 
                 setTagsArr(uniqTags(openItem.tags ?? []));
             }
         })();
-    }, [openItem?.id]);
+    }, [openItem?.id, ensureLive]);
 
     React.useEffect(() => {
         if (!openItem?.id) return;
@@ -521,9 +598,7 @@ function RightDetailSheet({ openItem, open, onOpenChange, onDeleted, onUpdated, 
                                         <TagChipsCompact
                                             tags={tagsForUI}
                                             max={10}
-                                            onMore={() =>
-                                                document.getElementById("full-tags")?.scrollIntoView({ behavior: "smooth", block: "start" })
-                                            }
+                                            onMore={() => document.getElementById("full-tags")?.scrollIntoView({ behavior: "smooth", block: "start" })}
                                         />
                                     </div>
 
@@ -605,11 +680,73 @@ export default function Dashboard() {
     const [filtersOpen, setFiltersOpen] = React.useState(false);
     const [selectedTags, setSelectedTags] = React.useState(new Set());
 
-    // Optional: auch nicht mögliche tags anzeigen (ausgegraut)
     const [showAllTags, setShowAllTags] = React.useState(false);
 
     const [openItem, setOpenItem] = React.useState(null);
 
+    // Polling state
+    const pollTimersRef = React.useRef(new Map()); // id -> intervalId
+
+    const applyFresh = React.useCallback((dto) => {
+        const card = mapToCardItem(dto);
+
+        // items updaten (oder hinzufügen, falls z.B. Suche aktuell ist)
+        setItems((prev) => {
+            const exists = prev.some((x) => x.id === card.id);
+            if (!exists) return [card, ...prev];
+            return prev.map((x) => (x.id === card.id ? { ...x, ...card } : x));
+        });
+
+        // wenn Detail offen: auch updaten
+        setOpenItem((prev) => (prev?.id === card.id ? { ...prev, ...card } : prev));
+    }, []);
+
+    const stopPolling = React.useCallback((id) => {
+        const intervalId = pollTimersRef.current.get(id);
+        if (intervalId) {
+            window.clearInterval(intervalId);
+            pollTimersRef.current.delete(id);
+        }
+    }, []);
+
+    const startPolling = React.useCallback(
+        (id) => {
+            if (!id) return;
+            if (pollTimersRef.current.has(id)) return;
+
+            let tries = 0;
+            const maxTries = 80; // ~120 Sekunden bei 1500ms
+
+            const intervalId = window.setInterval(async () => {
+                tries++;
+
+                try {
+                    const fresh = await getDocument(id);
+                    applyFresh(fresh);
+
+                    if (isDocReady(fresh) || tries >= maxTries) {
+                        stopPolling(id);
+                    }
+                } catch (e) {
+                    // Wenn es dauerhaft crasht, nach maxTries stoppen.
+                    if (tries >= maxTries) stopPolling(id);
+                }
+            }, 1500);
+
+            pollTimersRef.current.set(id, intervalId);
+        },
+        [applyFresh, stopPolling]
+    );
+
+    // cleanup
+    React.useEffect(() => {
+        return () => {
+            for (const [, intervalId] of pollTimersRef.current.entries()) window.clearInterval(intervalId);
+            pollTimersRef.current.clear();
+        };
+    }, []);
+
+    // initial load
     React.useEffect(() => {
         (async () => {
             try {
@@ -622,6 +759,7 @@ export default function Dashboard() {
         })();
     }, []);
 
+    // search
     React.useEffect(() => {
         const handle = setTimeout(async () => {
             const q = query.trim();
@@ -655,10 +793,8 @@ export default function Dashboard() {
         });
     }, [items, selectedTags]);
 
-    // Alle tags (für optional "show unavailable")
     const allTagCounts = React.useMemo(() => buildTagCounts(items), [items]);
 
-    // ✅ WICHTIG: TagPanel zeigt standardmäßig nur tags aus der aktuell gefilterten Menge
     const availableTagCounts = React.useMemo(() => {
         const baseDocs = selectedTags.size === 0 ? items : filteredDocs;
         return buildTagCounts(baseDocs);
@@ -666,9 +802,8 @@ export default function Dashboard() {
 
     const tagCountsForPanel = showAllTags ? allTagCounts : availableTagCounts;
 
-    // Tags, die NICHT mehr auswählbar sind (ausgegraut) – nur relevant wenn showAllTags=true
     const disabledSet = React.useMemo(() => {
-        if (!showAllTags) return new Set(); // wir zeigen ja nur verfügbare
+        if (!showAllTags) return new Set();
         const allSet = toTagSet(allTagCounts);
         const availSet = toTagSet(availableTagCounts);
         const d = new Set();
@@ -709,6 +844,9 @@ export default function Dashboard() {
             setItems((prev) => prev.filter((x) => !selected.has(x.id)));
             clearSelection();
             if (openItem && selected.has(openItem.id)) setOpenItem(null);
+
+            // falls gerade polling läuft: stoppen
+            for (const id of ids) stopPolling(id);
         } catch (e) {
             console.error(e);
             alert("Delete failed");
@@ -728,9 +866,7 @@ export default function Dashboard() {
     }
 
     function handleUpdated(updatedDto) {
-        const card = mapToCardItem(updatedDto);
-        setItems((prev) => prev.map((x) => (x.id === card.id ? { ...x, ...card } : x)));
-        setOpenItem((prev) => (prev?.id === card.id ? { ...prev, ...card } : prev));
+        applyFresh(updatedDto);
     }
 
     function handleDeleted(id) {
@@ -741,6 +877,7 @@ export default function Dashboard() {
             return n;
         });
         setOpenItem(null);
+        stopPolling(id);
     }
 
     return (
@@ -820,6 +957,9 @@ export default function Dashboard() {
                                         const card = mapToCardItem(dto);
                                         setItems((prev) => [card, ...prev]);
                                         setTab("results");
+
+                                        // nach Upload automatisch pollen
+                                        startPolling(dto.id);
                                     }}
                                 />
                             </TabsContent>
@@ -889,7 +1029,10 @@ export default function Dashboard() {
                                                 item={it}
                                                 selected={selected.has(it.id)}
                                                 onToggle={() => toggleSelect(it.id)}
-                                                onOpen={(x) => setOpenItem(x)}
+                                                onOpen={(x) => {
+                                                    setOpenItem(x);
+                                                    startPolling(x.id); // auch beim Öffnen live halten
+                                                }}
                                             />
                                         ))}
                                     </div>
@@ -902,6 +1045,7 @@ export default function Dashboard() {
                                     onDeleted={handleDeleted}
                                     onUpdated={handleUpdated}
                                     onOpenDoc={(docDto) => setOpenItem(mapToCardItem(docDto))}
+                                    ensureLive={(id) => startPolling(id)}
                                 />
                             </TabsContent>
                         </CardContent>

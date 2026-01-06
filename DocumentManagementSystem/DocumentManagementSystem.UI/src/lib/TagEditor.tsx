@@ -199,12 +199,6 @@ export function TagEditor({
                     </div>
                 )}
             </div>
-
-            <div className="text-xs text-muted-foreground">
-                <span className="font-medium">org:ÖBB</span>,{" "}
-                <span className="font-medium">kw:Netzwerktechnik</span>,{" "}
-                <span className="font-medium">Q4-2025</span>
-            </div>
         </div>
     );
 }

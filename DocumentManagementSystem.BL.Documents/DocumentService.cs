@@ -46,7 +46,7 @@ public class DocumentService
         if (string.IsNullOrWhiteSpace(title) || title.Trim().Length < 3)
             errors["Title"] = new[] { "Title must be at least 3 characters." };
 
-        // ✅ Tags sauber machen: trim, spaces, maxlen 64, distinct (case-insensitive), max 10
+        // Tags sauber machen: trim, spaces, maxlen 64, distinct (case-insensitive), max 10
         var cleanedTags = CleanTags(tags);
 
         if (cleanedTags.Count > 10)
@@ -254,7 +254,7 @@ public class DocumentService
     }
 
     // =========================
-    // ✅ Helpers
+    // Helpers
     // =========================
 
     private static List<string> CleanTags(List<string>? tags)

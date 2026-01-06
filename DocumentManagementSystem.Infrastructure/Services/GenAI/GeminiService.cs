@@ -39,7 +39,7 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
             if (string.IsNullOrWhiteSpace(text))
                 return null;
 
-            // ✅ Wichtig: Gemini 2.5 produziert sonst "thoughtsTokenCount" und frisst dein Token-Budget
+            // Wichtig: Gemini 2.5 produziert sonst "thoughtsTokenCount" und frisst dein Token-Budget
             // -> führt zu finishReason MAX_TOKENS obwohl sichtbarer Text kurz ist.
             // Lösung: thinkingBudget = 0
             var prompt =
@@ -79,7 +79,7 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
                     Temperature = 0.2,
                     MaxOutputTokens = maxOutputTokens,
 
-                    // ✅ KEY-FIX: Thinking aus (verhindert MAX_TOKENS durch thoughtsTokenCount)
+                    // KEY-FIX: Thinking aus (verhindert MAX_TOKENS durch thoughtsTokenCount)
                     ThinkingConfig = new GeminiThinkingConfig
                     {
                         ThinkingBudget = 0,
@@ -153,7 +153,7 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
                     Temperature = 0.0,
                     MaxOutputTokens = 2048,
 
-                    // ✅ Auch hier: Thinking aus, damit JSON nicht wegen thoughts gekappt wird
+                    // Auch hier: Thinking aus, damit JSON nicht wegen thoughts gekappt wird
                     ThinkingConfig = new GeminiThinkingConfig
                     {
                         ThinkingBudget = 0,

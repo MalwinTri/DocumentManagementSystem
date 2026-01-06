@@ -105,7 +105,7 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
                         catch (AiRateLimitException ex)
                         {
                             await StoreRateLimitBackoffAsync(doc, ex, stoppingToken);
-                            _pauseUntilUtc = doc.AiNextAttemptAt; // ✅ global Pause
+                            _pauseUntilUtc = doc.AiNextAttemptAt; // global Pause
                             continue;
                         }
                         catch (Exception ex)

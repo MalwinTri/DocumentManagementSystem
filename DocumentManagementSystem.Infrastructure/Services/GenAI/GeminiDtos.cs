@@ -44,7 +44,7 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
         public string? FinishReason { get; set; }
     }
 
-    // ✅ NEU: ThinkingConfig (wichtig für Gemini 2.5 gegen "thoughtsTokenCount" / MAX_TOKENS)
+    // ThinkingConfig (wichtig für Gemini 2.5 gegen "thoughtsTokenCount" / MAX_TOKENS)
     public sealed class GeminiThinkingConfig
     {
         // 0 = Thinking komplett aus (spart Token-Budget und verhindert Truncation durch Thoughts)
@@ -77,12 +77,12 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public object? ResponseSchema { get; set; }
 
-        // ✅ JSON Schema (hier darf additionalProperties, anyOf, etc.)
+        // JSON Schema (hier darf additionalProperties, anyOf, etc.)
         [JsonPropertyName("responseJsonSchema")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public object? ResponseJsonSchema { get; set; }
 
-        // ✅ NEU: Thinking Config für Gemini 2.5
+        // Thinking Config für Gemini 2.5
         [JsonPropertyName("thinkingConfig")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public GeminiThinkingConfig? ThinkingConfig { get; set; }
