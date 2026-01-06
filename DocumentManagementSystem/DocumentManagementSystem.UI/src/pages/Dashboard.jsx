@@ -1,6 +1,6 @@
 ﻿// src/pages/Dashboard.jsx
 import React from "react";
-import { Search, Tag, Trash2, CheckCircle2, Filter, ExternalLink } from "lucide-react";
+import { Search, Tag, Trash2, Filter, ExternalLink } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,8 +36,8 @@ function mapToCardItem(dto) {
         title: dto.title ?? "Untitled",
         date: dto.createdAt?.slice(0, 10) ?? "",
         tags: Array.isArray(dto.tags) ? dto.tags : [],
-        summary: dto.summary ?? "—",
-        preview: dto.summary ?? dto.description ?? (dto.ocrText ? dto.ocrText.slice(0, 140) + "…" : ""),
+        summary: dto.summary ?? "-",
+        preview: dto.summary ?? dto.description ?? (dto.ocrText ? dto.ocrText.slice(0, 140) + "..." : ""),
     };
 }
 
@@ -58,16 +58,18 @@ function barClassesFromTags(tags) {
     return out.length ? out : ["bg-slate-400/40"];
 }
 
-// ---------- Polling helpers ----------
+// ---------- Polling helpers (Variante A) ----------
 function isDocReady(dto) {
+    //  Stop-Kriterium: Summary vorhanden + mindestens ein kw:-Tag
+    // (Wenn du kw: nicht hast, läuft es bis maxTries und stoppt dann automatisch.)
     const summary = String(dto?.summary ?? "").trim();
-    const hasSummary = summary.length > 0 && summary !== "—";
+    const hasSummary = summary.length > 0 && summary !== "-";
     const hasKw = Array.isArray(dto?.tags) && dto.tags.some((t) => String(t).toLowerCase().startsWith("kw:"));
     return hasSummary && hasKw;
 }
 
 // ---------- Dropzone (Click + Drag & Drop) ----------
-function Dropzone({ onUploaded }) {
+function Dropzone({ onUploaded, onStartPolling }) {
     const inputRef = React.useRef(null);
     const [busy, setBusy] = React.useState(false);
     const [msg, setMsg] = React.useState("");
@@ -77,11 +79,11 @@ function Dropzone({ onUploaded }) {
     async function uploadOne(file) {
         if (!file) return;
         setBusy(true);
-        setMsg("");
-
-        try {
+        setMsg(""); try {
             const saved = await uploadDocument(file, { title: file.name });
             setMsg("Uploaded");
+            //  wichtig: Polling direkt hier starten (damit Drag&Drop und Click identisch funktionieren)
+            onStartPolling?.(saved?.id);
             onUploaded?.(saved);
         } catch (err) {
             console.error(err);
@@ -174,7 +176,7 @@ function Dropzone({ onUploaded }) {
                     }}
                     type="button"
                 >
-                    {busy ? "Uploading…" : "Select file"}
+                    {busy ? "Uploading..." : "Select file"}
                 </Button>
             </div>
 
@@ -226,7 +228,7 @@ function TagPanel({ tags, selected, disabledSet, onToggle, onClear, showAllToggl
                 <Input
                     value={tagQuery}
                     onChange={(e) => setTagQuery(e.target.value)}
-                    placeholder="Search tags…"
+                    placeholder="Search tags..."
                     className="rounded-xl"
                 />
             </div>
@@ -313,9 +315,7 @@ function InlineFiltersPanel({
                             onClick={onClose}
                             type="button"
                             aria-label="Close filters"
-                        >
-                            ✕
-                        </Button>
+                        >Close</Button>
                     </div>
                 </div>
             </CardHeader>
@@ -386,7 +386,6 @@ function ResultCard({ item, selected, onToggle, onOpen }) {
                     <div className="rounded-xl bg-muted/40 p-3 text-sm border">
                         <div className="flex items-center gap-2 mb-1 text-muted-foreground">
                             <span className="text-foreground font-bold flex items-center gap-2">
-                                <span aria-hidden="true">✦</span>
                                 AI Summary
                             </span>
                         </div>
@@ -487,6 +486,13 @@ function RightDetailSheet({ openItem, open, onOpenChange, onDeleted, onUpdated, 
     const [similar, setSimilar] = React.useState([]);
     const [similarLoading, setSimilarLoading] = React.useState(false);
 
+    // Autosave status (kein Save-Button)
+    const [dirty, setDirty] = React.useState(false);
+    const [saving, setSaving] = React.useState(false);
+    const [saveError, setSaveError] = React.useState("");
+
+    const MAX_TAGS = 10; // Backend-Validation: max. 10 Tags
+
     // Tag suggestions API (bleibt in Dashboard, damit du nix extra anlegen musst)
     const loadTagSuggestions = React.useCallback(async (q) => {
         const params = new URLSearchParams();
@@ -506,13 +512,17 @@ function RightDetailSheet({ openItem, open, onOpenChange, onDeleted, onUpdated, 
                 setDetail(fresh);
                 setTitle(fresh.title ?? "");
                 setSummary(fresh.summary ?? "");
-                setTagsArr(uniqTags(fresh.tags ?? []));
+                setTagsArr(uniqTags(fresh.tags ?? []).slice(0, MAX_TAGS));
+                setDirty(false);
+                setSaveError("");
             } catch (e) {
                 console.error(e);
                 setDetail(null);
                 setTitle(openItem.title ?? "");
                 setSummary(openItem.summary ?? "");
-                setTagsArr(uniqTags(openItem.tags ?? []));
+                setTagsArr(uniqTags(openItem.tags ?? []).slice(0, MAX_TAGS));
+                setDirty(false);
+                setSaveError("");
             }
         })();
     }, [openItem?.id, ensureLive]);
@@ -535,13 +545,39 @@ function RightDetailSheet({ openItem, open, onOpenChange, onDeleted, onUpdated, 
         })();
     }, [openItem?.id]);
 
-    async function handleSave() {
+    // Autosave (debounced) — speichert Tags/Title/Summary automatisch
+    React.useEffect(() => {
         if (!openItem?.id) return;
+        if (!dirty) return;
 
-        const tags = uniqTags(tagsArr ?? []);
-        const updated = await updateDocument(openItem.id, { title, summary, tags });
-        onUpdated?.(updated);
-    }
+        const id = openItem.id;
+        const h = window.setTimeout(async () => {
+            try {
+                setSaving(true);
+                setSaveError("");
+
+                const tags = uniqTags(tagsArr ?? []).slice(0, MAX_TAGS);
+                const updated = await updateDocument(id, { title, summary, tags });
+
+                // Sync local state with server response
+                setTitle(updated?.title ?? "");
+                setSummary(updated?.summary ?? "");
+                setTagsArr(uniqTags(updated?.tags ?? []));
+                setDetail(updated);
+                setDirty(false);
+
+                onUpdated?.(updated);
+            } catch (e) {
+                console.error(e);
+                setSaveError("Save failed");
+                // dirty bleibt true
+            } finally {
+                setSaving(false);
+            }
+        }, 700);
+
+        return () => window.clearTimeout(h);
+    }, [dirty, title, summary, tagsArr, openItem?.id, onUpdated]);
 
     async function handleDelete() {
         if (!openItem?.id) return;
@@ -558,29 +594,33 @@ function RightDetailSheet({ openItem, open, onOpenChange, onDeleted, onUpdated, 
         onOpenChange(false);
     }
 
-    const tagsForUI = detail?.tags ?? openItem?.tags ?? [];
+    // Show the *edited* tags immediately (and keep them stable while polling)
+    const tagsForUI = uniqTags(tagsArr ?? []);
 
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
-            <SheetContent className="p-0">
-                <SheetHeader>
-                    <SheetTitle className="truncate">{title || openItem?.title || "Document"}</SheetTitle>
+            <SheetContent className="p-0 flex flex-col">
+                <SheetHeader className="px-4 py-3 border-b">
+                    <div className="flex items-center justify-between gap-3">
+                        <SheetTitle className="truncate flex-1">{title || openItem?.title || "Document"}</SheetTitle>
+                        <div className="text-xs text-muted-foreground">
+                            {saving ? "Saving..." : saveError ? saveError : dirty ? "Unsaved" : "Saved"}
+                        </div>
+                    </div>
                 </SheetHeader>
 
-                <ScrollArea className="h-[calc(100vh-56px)]">
+                <ScrollArea className="flex-1">
                     <div className="p-4 space-y-5">
                         <div className="rounded-2xl border p-4 space-y-3">
                             <div className="font-medium">Summary</div>
                             <textarea
                                 value={summary}
-                                onChange={(e) => setSummary(e.target.value)}
+                                onChange={(e) => {
+                                    setSummary(e.target.value);
+                                    setDirty(true);
+                                }}
                                 className="w-full h-36 resize-none rounded-xl border bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                             />
-                            <div className="text-right">
-                                <Button size="sm" className="rounded-xl" type="button" onClick={handleSave}>
-                                    Save
-                                </Button>
-                            </div>
                         </div>
 
                         <div className="rounded-2xl border p-4 space-y-3">
@@ -588,7 +628,14 @@ function RightDetailSheet({ openItem, open, onOpenChange, onDeleted, onUpdated, 
                             <div className="space-y-3">
                                 <div>
                                     <div className="text-sm font-medium">Title</div>
-                                    <Input value={title} onChange={(e) => setTitle(e.target.value)} className="rounded-xl mt-1" />
+                                    <Input
+                                        value={title}
+                                        onChange={(e) => {
+                                            setTitle(e.target.value);
+                                            setDirty(true);
+                                        }}
+                                        className="rounded-xl mt-1"
+                                    />
                                 </div>
 
                                 <div>
@@ -598,27 +645,29 @@ function RightDetailSheet({ openItem, open, onOpenChange, onDeleted, onUpdated, 
                                         <TagChipsCompact
                                             tags={tagsForUI}
                                             max={10}
-                                            onMore={() => document.getElementById("full-tags")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                                            onMore={() =>
+                                                document.getElementById("full-tags")?.scrollIntoView({ behavior: "smooth", block: "start" })
+                                            }
                                         />
                                     </div>
 
                                     <div className="mt-3">
-                                        <TagEditor value={tagsArr} onChange={setTagsArr} loadSuggestions={loadTagSuggestions} />
+                                        <TagEditor
+                                            value={tagsArr}
+                                            onChange={(next) => {
+                                                const clean = uniqTags(next ?? []);
+                                                if (clean.length > MAX_TAGS) setSaveError("No more than 10 tags allowed.");
+                                                setTagsArr(clean.slice(0, MAX_TAGS));
+                                                setDirty(true);
+                                            }}
+                                            loadSuggestions={loadTagSuggestions}
+                                        />
                                     </div>
 
                                     <div id="full-tags" className="mt-4">
                                         <TagGroups tags={tagsForUI} />
                                     </div>
                                 </div>
-                            </div>
-
-                            <div className="flex gap-2 pt-2">
-                                <Button variant="destructive" className="rounded-xl gap-2" type="button" onClick={handleDelete}>
-                                    <Trash2 className="w-4 h-4" /> Delete
-                                </Button>
-                                <Button className="rounded-xl" type="button" onClick={handleSave}>
-                                    Save
-                                </Button>
                             </div>
                         </div>
 
@@ -628,7 +677,7 @@ function RightDetailSheet({ openItem, open, onOpenChange, onDeleted, onUpdated, 
                             </div>
 
                             {similarLoading ? (
-                                <div className="text-sm text-muted-foreground">Loading…</div>
+                                <div className="text-sm text-muted-foreground">Loading...</div>
                             ) : similar.length === 0 ? (
                                 <div className="text-sm text-muted-foreground">Keine ähnlichen Dokumente gefunden.</div>
                             ) : (
@@ -647,20 +696,32 @@ function RightDetailSheet({ openItem, open, onOpenChange, onDeleted, onUpdated, 
 
                         <div className="rounded-2xl border p-4">
                             <div className="font-medium mb-2">Activity</div>
-                            <ul className="text-sm space-y-2">
-                                <li className="flex items-center gap-2">
-                                    <CheckCircle2 className="w-4 h-4" /> Uploaded on {openItem?.date || "—"}
-                                </li>
-                                <li className="flex items-center gap-2">
-                                    <CheckCircle2 className="w-4 h-4" /> Indexed
-                                </li>
-                                <li className="flex items-center gap-2">
-                                    <CheckCircle2 className="w-4 h-4" /> Summary generated
-                                </li>
+                            <ul className="text-sm space-y-2 text-muted-foreground">
+                                <li>Uploaded on {openItem?.date || "-"}</li>
+                                <li>Indexed</li>
+                                <li>Summary generated</li>
                             </ul>
                         </div>
                     </div>
                 </ScrollArea>
+
+                <div className="border-t bg-background p-3 flex items-center gap-2">
+                    <Button
+                        variant="destructive"
+                        className="rounded-xl"
+                        type="button"
+                        onClick={handleDelete}
+                        disabled={saving}
+                    >
+                        Delete
+                    </Button>
+
+                    <div className="flex-1" />
+
+                    <div className="text-xs text-muted-foreground">
+                        {saving ? "Saving..." : saveError ? saveError : dirty ? "Unsaved" : "Saved"}
+                    </div>
+                </div>
             </SheetContent>
         </Sheet>
     );
@@ -737,7 +798,6 @@ export default function Dashboard() {
         },
         [applyFresh, stopPolling]
     );
-
     // cleanup
     React.useEffect(() => {
         return () => {
@@ -745,6 +805,24 @@ export default function Dashboard() {
             pollTimersRef.current.clear();
         };
     }, []);
+
+    //  Safety-Net: falls ein Poll-Start mal nicht feuert (z.B. Drop-Edgecases),
+    // starte Polling automatisch für die neuesten Docs ohne Summary.
+    React.useEffect(() => {
+        const t = window.setInterval(() => {
+            const need = (items ?? []).filter((x) => {
+                const s = String(x?.summary ?? "").trim();
+                return !s || s === "-";
+            });
+
+            // nur ein paar gleichzeitig
+            for (const it of need.slice(0, 4)) {
+                startPolling(it.id);
+            }
+        }, 2500);
+
+        return () => window.clearInterval(t);
+    }, [items, startPolling]);
 
     // initial load
     React.useEffect(() => {
@@ -888,7 +966,7 @@ export default function Dashboard() {
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                             <Input
-                                placeholder="Search documents…"
+                                placeholder="Search documents..."
                                 className="pl-9 rounded-xl"
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
@@ -938,7 +1016,7 @@ export default function Dashboard() {
                                         >
                                             <span className={"h-2 w-2 rounded-full " + toneDotClass(t)} />
                                             <span className="text-foreground">{parseTag(t).label}</span>
-                                            <span className="text-muted-foreground">×</span>
+                                            <span className="text-muted-foreground">x</span>
                                         </button>
                                     ))}
                                     {selectedTags.size > 0 && (
@@ -953,13 +1031,11 @@ export default function Dashboard() {
                         <CardContent>
                             <TabsContent value="upload" className="mt-2">
                                 <Dropzone
+                                    onStartPolling={(id) => startPolling(id)}
                                     onUploaded={(dto) => {
                                         const card = mapToCardItem(dto);
                                         setItems((prev) => [card, ...prev]);
                                         setTab("results");
-
-                                        // nach Upload automatisch pollen
-                                        startPolling(dto.id);
                                     }}
                                 />
                             </TabsContent>
@@ -1016,7 +1092,7 @@ export default function Dashboard() {
                                 </div>
 
                                 {loading ? (
-                                    <div className="text-sm text-muted-foreground">Loading…</div>
+                                    <div className="text-sm text-muted-foreground">Loading...</div>
                                 ) : filteredDocs.length === 0 ? (
                                     <Card className="rounded-2xl">
                                         <CardContent className="py-16 text-center text-muted-foreground">No documents found.</CardContent>
@@ -1031,7 +1107,7 @@ export default function Dashboard() {
                                                 onToggle={() => toggleSelect(it.id)}
                                                 onOpen={(x) => {
                                                     setOpenItem(x);
-                                                    startPolling(x.id); // auch beim Öffnen live halten
+                                                    startPolling(x.id); //  auch beim Öffnen live halten
                                                 }}
                                             />
                                         ))}
