@@ -68,9 +68,11 @@ jobs:
       # -----------------------
       - name: Test
         env:
-          ConnectionStrings__Default: Host=localhost;Port=5432;Database=dms;Username=postgres;Password=postgres
-          ASPNETCORE_ENVIRONMENT: Testing
-        run: dotnet test -c Release --no-build --verbosity normal
+          ConnectionStrings__Default: Host=localhost;Port=5433;Database=${{ secrets.CI_DB_NAME }};Username=${{ secrets.CI_DB_USER }};Password=${{ secrets.CI_DB_PASSWORD }}
+        run: |
+          dotnet test ./DocumentManagementSystem.Tests/DocumentManagementSystem.Tests.csproj -c Release --no-build --verbosity normal
+          dotnet test ./DocumentManagementSystem.IntegrationTests/DocumentManagementSystem.IntegrationTests.csproj -c Release --no-build --verbosity normal
+
 
   docker-build-push:
     name: Docker Build & Push (master only)
