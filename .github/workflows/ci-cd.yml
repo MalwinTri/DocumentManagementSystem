@@ -102,12 +102,13 @@ jobs:
       - name: Wait for Garage service
         run: |
           for i in {1..30}; do
-            curl --silent --fail http://garage:3900 && exit 0
+            curl --silent --fail http://localhost:3900 && exit 0
             echo "Garage not ready yet... ($i/30)"
             sleep 2
           done
           echo "Garage did not become ready in time"
           exit 1
+
 
       # -----------------------
       # Wait for RabbitMQ
