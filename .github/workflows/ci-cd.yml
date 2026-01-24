@@ -15,12 +15,21 @@ env:
   DOTNET_VERSION: "8.0.x"
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository_owner }}/dms
+  ConnectionStrings__Default: Host=localhost;Port=5433;Database=${{ secrets.CI_DB_NAME }};Username=${{ secrets.CI_DB_USER }};Password=${{ secrets.CI_DB_PASSWORD }}
+  GarageS3__Endpoint: http://localhost:3900
+  GarageS3__AccessKey: ${{ secrets.CI_S3_ACCESS_KEY }}
+  GarageS3__SecretKey: ${{ secrets.CI_S3_SECRET_KEY }}
+  GarageS3__Bucket: ${{ secrets.CI_S3_BUCKET }}
+  GarageS3__Region: ${{ secrets.CI_S3_REGION }}
+  RABBIT_HOST: ${{ secrets.RABBIT_HOST }}
+  RABBIT_USER: ${{ secrets.RABBIT_USER }}
+  RABBIT_PASS: ${{ secrets.RABBIT_PASS }}
+  RABBIT_QUEUE: ${{ secrets.RABBIT_QUEUE }}
+
 
 jobs:
-  build-lint-test:
-    name: Build, Lint & Test
+  build-and-test:
     runs-on: ubuntu-latest
-
     services:
       postgres:
         image: postgres:16
@@ -35,21 +44,37 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
-          
+
+      garage:
+        image: dxflrs/garage:v2.1.0
+        ports:
+          - 3900:3900
+
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+          - 15672:15672
+          - 5672:5672
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Run Tests
+        env:
+          ConnectionStrings__Default: Host=localhost;Port=5433;Database=${{ secrets.CI_DB_NAME }};Username=${{ secrets.CI_DB_USER }};Password=${{ secrets.CI_DB_PASSWORD }}
+          GarageS3__Endpoint: http://localhost:3900
+          GarageS3__AccessKey: ${{ secrets.CI_S3_ACCESS_KEY }}
+          GarageS3__SecretKey: ${{ secrets.CI_S3_SECRET_KEY }}
+          GarageS3__Bucket: ${{ secrets.CI_S3_BUCKET }}
+          GarageS3__Region: ${{ secrets.CI_S3_REGION }}
+          RABBIT_HOST: ${{ secrets.RABBIT_HOST }}
+          RABBIT_USER: ${{ secrets.RABBIT_USER }}
+          RABBIT_PASS: ${{ secrets.RABBIT_PASS }}
+          RABBIT_QUEUE: ${{ secrets.RABBIT_QUEUE }}
+        run: |
+          dotnet test ./DocumentManagementSystem.IntegrationTests/DocumentManagementSystem.IntegrationTests.csproj -c Release --no-build --verbosity normal
 
-      - name: Restore
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build -c Release --no-restore
 
       # -----------------------
       # LINTING (dotnet format)
