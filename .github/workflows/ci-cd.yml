@@ -106,9 +106,13 @@ jobs:
       # -----------------------
       - name: Wait for Garage service
         run: |
-          for i in {1..30}; do
-            aws --endpoint-url http://garage:3900 s3 ls --no-verify-ssl && exit 0
-            echo "Garage not ready yet... ($i/30)"
+          for i in {1..60}; do
+            IP_ADDRESS=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' garage)
+            if curl --silent --fail http://$IP_ADDRESS:3900; then
+              echo "Garage is ready!"
+              exit 0
+            fi
+            echo "Garage not ready yet... ($i/60)"
             sleep 5
           done
           echo "Garage did not become ready in time"
