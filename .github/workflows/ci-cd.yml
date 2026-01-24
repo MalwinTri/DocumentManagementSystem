@@ -103,11 +103,31 @@ jobs:
           exit 1
 
       # -----------------------
-      # Wait for Garage service (S3-Check, KEIN curl!)
+      # Ensure AWS CLI is available
+      # -----------------------
+      - name: Install AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y awscli
+
+      # -----------------------
+      # Debug Garage container (shows if it crashed)
+      # -----------------------
+      - name: Show Garage logs
+        if: always()
+        run: |
+          docker ps -a
+          docker logs "${{ job.services.garage.id }}" || true
+
+      # -----------------------
+      # Wait for Garage service (S3-Check)
       # -----------------------
       - name: Wait for Garage service
         run: |
+          echo "Using endpoint: http://garage:3900"
+          echo "AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION"
           for i in {1..30}; do
+            echo "Attempt $i/30..."
             if aws --endpoint-url http://garage:3900 s3 ls --no-verify-ssl >/dev/null 2>&1; then
               echo "Garage is ready!"
               exit 0
