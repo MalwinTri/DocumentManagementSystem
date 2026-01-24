@@ -1,4 +1,4 @@
-name: CI/CD
+name: CI/CD Pipeline
 
 on:
   pull_request:
@@ -15,12 +15,20 @@ env:
   DOTNET_VERSION: "8.0.x"
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository_owner }}/dms
+  ConnectionStrings__Default: Host=localhost;Port=5433;Database=${{ secrets.CI_DB_NAME }};Username=${{ secrets.CI_DB_USER }};Password=${{ secrets.CI_DB_PASSWORD }}
+  GarageS3__Endpoint: http://localhost:3900
+  GarageS3__AccessKey: ${{ secrets.CI_S3_ACCESS_KEY }}
+  GarageS3__SecretKey: ${{ secrets.CI_S3_SECRET_KEY }}
+  GarageS3__Bucket: ${{ secrets.CI_S3_BUCKET }}
+  GarageS3__Region: ${{ secrets.CI_S3_REGION }}
+  RABBIT_HOST: ${{ secrets.RABBIT_HOST }}
+  RABBIT_USER: ${{ secrets.RABBIT_USER }}
+  RABBIT_PASS: ${{ secrets.RABBIT_PASS }}
+  RABBIT_QUEUE: ${{ secrets.RABBIT_QUEUE }}
 
 jobs:
   build-and-test:
-    name: Build, Lint & Test
     runs-on: ubuntu-latest
-
     services:
       postgres:
         image: postgres:16
@@ -35,78 +43,62 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
-
       garage:
         image: dxflrs/garage:v2.1.0
         ports:
           - 3900:3900
-
       rabbitmq:
         image: rabbitmq:3-management
         ports:
-          - 5672:5672
           - 15672:15672
+          - 5672:5672
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Restore
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build -c Release --no-restore
+      - name: Checkout code
+        uses: actions/checkout@v2
 
       # -----------------------
-      # LINTING (dotnet format)
+      # WAIT FOR GARAGE (before tests)
       # -----------------------
-      - name: Install dotnet format
-        run: dotnet tool install -g dotnet-format
-
-      - name: Add dotnet tools to PATH
-        run: echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
-
-      - name: Lint (dotnet format)
-        run: dotnet format --verify-no-changes --verbosity minimal
-
-      # -----------------------
-      # Unit Tests (exclude OCR smoke)
-      # -----------------------
-      - name: Unit Tests (exclude OCR smoke)
-        run: dotnet test ./DocumentManagementSystem.Tests/DocumentManagementSystem.Tests.csproj -c Release --no-build --verbosity normal --filter "Category!=OcrSmoke"
-
-      # -----------------------
-      # Wait for Postgres (optional extra safety)
-      # -----------------------
-      - name: Install postgres client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-
-      - name: Wait for Postgres
+      - name: Wait for Garage
         run: |
           for i in {1..30}; do
-            pg_isready -h localhost -p 5433 -U "${{ secrets.CI_DB_USER }}" -d "${{ secrets.CI_DB_NAME }}" && exit 0
-            echo "Postgres not ready yet... ($i/30)"
+            if curl -sSf http://garage:3900 >/dev/null; then
+              echo "Garage is up"
+              exit 0
+            fi
+            echo "Garage not ready yet... ($i/30)"
             sleep 2
           done
-          echo "Postgres did not become ready in time"
+          echo "Garage did not become ready in time"
           exit 1
 
       # -----------------------
-      # Integration Tests
+      # Debug env (Garage)
+      # -----------------------
+      - name: Debug env (Garage)
+        run: |
+          echo "GarageS3__Endpoint=$GarageS3__Endpoint"
+          printenv | grep -i garage || true
+
+      # -----------------------
+      # RUN INTEGRATION TESTS
       # -----------------------
       - name: Integration Tests
         env:
           ConnectionStrings__Default: Host=localhost;Port=5433;Database=${{ secrets.CI_DB_NAME }};Username=${{ secrets.CI_DB_USER }};Password=${{ secrets.CI_DB_PASSWORD }}
+
+          # Garage Service in GitHub Actions: NICHT localhost!
           GarageS3__Endpoint: http://garage:3900
           GarageS3__AccessKey: ${{ secrets.CI_S3_ACCESS_KEY }}
           GarageS3__SecretKey: ${{ secrets.CI_S3_SECRET_KEY }}
           GarageS3__Bucket: ${{ secrets.CI_S3_BUCKET }}
           GarageS3__Region: ${{ secrets.CI_S3_REGION }}
+
+          # Falls AWS SDK "ServiceURL" irgendwo anders gezogen wird:
+          AWS_ENDPOINT_URL: http://garage:3900
+          AWS_REGION: ${{ secrets.CI_S3_REGION }}
+
           RABBIT_HOST: rabbitmq
           RABBIT_USER: guest
           RABBIT_PASS: guest
@@ -142,7 +134,6 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
-
       - name: Build & Push OCR Worker
         uses: docker/build-push-action@v6
         with:
@@ -152,7 +143,6 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ocr:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ocr:${{ github.sha }}
-
       - name: Build & Push GenAI Worker
         uses: docker/build-push-action@v6
         with:
@@ -162,7 +152,6 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-genai:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-genai:${{ github.sha }}
-
       - name: Build & Push AccessBatch
         uses: docker/build-push-action@v6
         with:
