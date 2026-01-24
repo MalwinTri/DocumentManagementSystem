@@ -15,7 +15,7 @@ using DocumentManagementSystem.Infrastructure.Services;
 using DocumentManagementSystem.Infrastructure.Services.GenAI;
 using DocumentManagementSystem.Elasticsearch.DependencyInjection;
 
-internal class Program
+public partial class Program
 {
     private static async Task Main(string[] args)
     {

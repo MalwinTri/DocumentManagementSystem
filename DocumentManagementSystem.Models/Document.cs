@@ -36,5 +36,9 @@ public class Document
     public DocumentMetadata? Metadata { get; set; }
     public ICollection<ExtractedEntity> ExtractedEntities { get; set; } = new List<ExtractedEntity>();
     public DocumentEmbedding? Embedding { get; set; }
+
+    // Sprint 7: Daily Access (Batch)
+    public ICollection<DocumentDailyAccess> DailyAccess { get; set; } = new List<DocumentDailyAccess>();
+
 }
 

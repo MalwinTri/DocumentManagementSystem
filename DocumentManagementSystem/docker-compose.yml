@@ -154,6 +154,28 @@
       start_period: 20s
     restart: unless-stopped
 
+  access-batch:
+    build:
+      context: ..
+      dockerfile: DocumentManagementSystem.AccessBatch/Dockerfile
+    container_name: dms-access-batch
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ConnectionStrings__Default: ${ConnectionStrings__Default}
+
+      AccessBatch__InputFolder: ${AccessBatch__InputFolder}
+      AccessBatch__ArchiveFolder: ${AccessBatch__ArchiveFolder}
+      AccessBatch__FilePattern: ${AccessBatch__FilePattern}
+      AccessBatch__RunHour: ${AccessBatch__RunHour}
+      AccessBatch__RunMinute: ${AccessBatch__RunMinute}
+    volumes:
+      - ./access-batch/input:${AccessBatch__InputFolder}
+      - ./access-batch/archive:${AccessBatch__ArchiveFolder}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
  
 volumes:
   dms-data:

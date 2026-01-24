@@ -61,5 +61,25 @@ public class DmsDbContext(DbContextOptions<DmsDbContext> options) : DbContext(op
           .WithMany(d => d.ExtractedEntities)
           .HasForeignKey(e => e.DocumentId)
           .OnDelete(DeleteBehavior.Cascade);
+
+        // DocumentDailyAccess 1:n (Document -> DailyAccess)
+        mb.Entity<DocumentDailyAccess>(e =>
+        {
+            e.ToTable("DocumentDailyAccesses");
+
+            // pro Document + Day genau ein Eintrag
+            e.HasKey(x => new { x.DocumentId, x.Day });
+
+            e.Property(x => x.Day).HasColumnType("date");
+            e.Property(x => x.Count).IsRequired();
+
+            e.HasOne(x => x.Document)
+             .WithMany(d => d.DailyAccess)
+             .HasForeignKey(x => x.DocumentId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            // optional, wenn du oft nach Datum über alle Docs filterst:
+            e.HasIndex(x => x.Day);
+        });
     }
 }

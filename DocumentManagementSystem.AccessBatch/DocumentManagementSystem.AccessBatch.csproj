@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-DocumentManagementSystem.AccessBatch-2bf95516-a8e7-41cb-bfa0-ee415b6d05e7</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DocumentManagementSystem.DAL.Postgres\DocumentManagementSystem.DAL.Postgres.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+   <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
+   <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.0" />
+   <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+  </ItemGroup>
+	
+</Project>
