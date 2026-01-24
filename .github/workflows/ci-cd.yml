@@ -2,9 +2,9 @@ name: CI/CD
 
 on:
   pull_request:
-    branches: [ "master", "CI_CD_Pipeline" ]
+    branches: ["master", "CI_CD_Pipeline"]
   push:
-    branches: [ "master", "CI_CD_Pipeline" ]
+    branches: ["master", "CI_CD_Pipeline"]
   workflow_dispatch:
 
 permissions:
@@ -18,24 +18,24 @@ env:
 
 jobs:
   build-lint-test:
-    name: Build, Lint & Test (.NET)
+    name: Build, Lint & Test
     runs-on: ubuntu-latest
 
     services:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: dms
+          POSTGRES_USER: ${{ secrets.CI_DB_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.CI_DB_NAME }}
         ports:
-          - 5432:5432
+          - 5433:5432
         options: >-
           --health-cmd="pg_isready -U postgres -d dms"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
-
+          
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,18 +60,39 @@ jobs:
       - name: Add dotnet tools to PATH
         run: echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
-      # Wichtig: no-restore, damit NU190x (Vulnerability Restore-Warnings) das Format nicht stören
       - name: Lint (dotnet format)
-        run: dotnet format --verify-no-changes --no-restore --verbosity minimal
-
+        run: dotnet format --verify-no-changes --verbosity minimal
 
       # -----------------------
-      # TESTS
+      # UNIT TESTS (ohne externe Tools)
+      # -> OCR-Smoke wird rausgefiltert
       # -----------------------
-      - name: Test (exclude OCR smoke tests)
+      - name: Unit Tests (exclude OCR smoke)
+        run: dotnet test ./DocumentManagementSystem.Tests/DocumentManagementSystem.Tests.csproj -c Release --no-build --verbosity normal --filter "Category!=OcrSmoke"
+
+      # -----------------------
+      # WAIT FOR POSTGRES
+      # -----------------------
+      - name: Install pg_isready (postgres client)
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Wait for Postgres
+        run: |
+          for i in {1..30}; do
+            pg_isready -h localhost -p 5433 -U postgres -d dms && exit 0
+            echo "Postgres not ready yet... ($i/30)"
+            sleep 2
+          done
+          echo "Postgres did not become ready in time"
+          exit 1
+
+      # -----------------------
+      # INTEGRATION TESTS
+      # -----------------------
+      - name: Integration Tests
         env:
           ConnectionStrings__Default: Host=localhost;Port=5433;Database=${{ secrets.CI_DB_NAME }};Username=${{ secrets.CI_DB_USER }};Password=${{ secrets.CI_DB_PASSWORD }}
-        run: dotnet test -c Release --no-build --verbosity normal --filter "Category!=OcrSmoke"
+        run: dotnet test ./DocumentManagementSystem.IntegrationTests/DocumentManagementSystem.IntegrationTests.csproj -c Release --no-build --verbosity normal
 
   docker-build-push:
     name: Docker Build & Push (master only)
