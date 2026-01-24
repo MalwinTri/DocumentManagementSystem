@@ -1,4 +1,4 @@
-﻿using DocumentManagementSystem.Models;
+using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocumentManagementSystem.Database;

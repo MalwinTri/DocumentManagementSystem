@@ -1,4 +1,4 @@
-﻿using DocumentManagementSystem.Elasticsearch.Models;
+using DocumentManagementSystem.Elasticsearch.Models;
 using Elastic.Clients.Elasticsearch;
 using Elastic.Transport;
 using System.Net.Http;

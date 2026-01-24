@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.Elasticsearch.Models;
+namespace DocumentManagementSystem.Elasticsearch.Models;
 
 public class DocumentIndex
 {

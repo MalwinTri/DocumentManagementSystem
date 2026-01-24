@@ -1,4 +1,4 @@
-﻿using DocumentManagementSystem.Models;
+using DocumentManagementSystem.Models;
 
 namespace DocumentManagementSystem.Elasticsearch.Models;
 

@@ -1,4 +1,4 @@
-﻿using DocumentManagementSystem.Database;
+using DocumentManagementSystem.Database;
 using DocumentManagementSystem.Elasticsearch.Models;
 using DocumentManagementSystem.Elasticsearch.Services;
 using DocumentManagementSystem.Infrastructure.Exceptions;

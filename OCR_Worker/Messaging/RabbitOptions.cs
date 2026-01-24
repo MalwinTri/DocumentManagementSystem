@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.OCR_Worker.Messaging;
+namespace DocumentManagementSystem.OCR_Worker.Messaging;
 
 public sealed class RabbitOptions
 {

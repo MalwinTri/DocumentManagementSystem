@@ -1,4 +1,4 @@
-﻿using DocumentManagementSystem.Elasticsearch.Configuration;
+using DocumentManagementSystem.Elasticsearch.Configuration;
 using DocumentManagementSystem.Elasticsearch.Services;
 using Elastic.Clients.Elasticsearch;
 using Microsoft.Extensions.Configuration;

@@ -1,4 +1,4 @@
-﻿using DocumentManagementSystem.BL.Documents;
+using DocumentManagementSystem.BL.Documents;
 using DocumentManagementSystem.Dto;
 using DocumentManagementSystem.Elasticsearch.Services;
 using DocumentManagementSystem.Exceptions;

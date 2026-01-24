@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.Exceptions;
+namespace DocumentManagementSystem.Exceptions;
 
 public class RepositoryException : AppException
 {

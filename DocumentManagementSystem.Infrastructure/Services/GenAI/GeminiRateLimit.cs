@@ -1,4 +1,4 @@
-﻿using DocumentManagementSystem.Infrastructure.Exceptions;
+using DocumentManagementSystem.Infrastructure.Exceptions;
 using System.Net;
 using System.Text.Json;
 

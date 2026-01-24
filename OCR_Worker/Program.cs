@@ -1,4 +1,4 @@
-﻿using Amazon.Runtime;
+using Amazon.Runtime;
 using Amazon.S3;
 using DocumentManagementSystem.Models;
 using DocumentManagementSystem.OCR_Worker.Worker;

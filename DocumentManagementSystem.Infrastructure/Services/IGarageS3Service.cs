@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.Infrastructure.Services
+namespace DocumentManagementSystem.Infrastructure.Services
 {
     public interface IGarageS3Service
     {

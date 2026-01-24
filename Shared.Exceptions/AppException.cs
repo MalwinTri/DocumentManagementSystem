@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.Exceptions;
+namespace DocumentManagementSystem.Exceptions;
 
 public abstract class AppException : Exception
 {

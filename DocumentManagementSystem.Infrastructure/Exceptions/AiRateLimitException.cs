@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.Infrastructure.Exceptions
+namespace DocumentManagementSystem.Infrastructure.Exceptions
 {
     public sealed class AiRateLimitException : Exception
     {

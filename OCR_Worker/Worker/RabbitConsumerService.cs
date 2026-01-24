@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using DocumentManagementSystem.Models;
 using DocumentManagementSystem.OCR_Worker.Messaging;

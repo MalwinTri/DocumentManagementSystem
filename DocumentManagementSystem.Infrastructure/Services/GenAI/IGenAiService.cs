@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.Infrastructure.Services.GenAI
+namespace DocumentManagementSystem.Infrastructure.Services.GenAI
 {
     public interface IGenAiService
     {

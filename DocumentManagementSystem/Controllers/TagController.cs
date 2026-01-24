@@ -1,4 +1,4 @@
-﻿using DocumentManagementSystem.DAL;
+using DocumentManagementSystem.DAL;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DocumentManagementSystem.Controllers;

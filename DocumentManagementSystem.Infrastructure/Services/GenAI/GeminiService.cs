@@ -1,4 +1,4 @@
-﻿using DocumentManagementSystem.Infrastructure.Exceptions;
+using DocumentManagementSystem.Infrastructure.Exceptions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Net;

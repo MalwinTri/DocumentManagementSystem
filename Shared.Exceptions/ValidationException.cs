@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.Exceptions;
+namespace DocumentManagementSystem.Exceptions;
 
 public sealed class ValidationException : AppException
 {

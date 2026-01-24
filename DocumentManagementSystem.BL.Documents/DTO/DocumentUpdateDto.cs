@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.Dto;
+namespace DocumentManagementSystem.Dto;
 
 public sealed class DocumentUpdateDto
 {

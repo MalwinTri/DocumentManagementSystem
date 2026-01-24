@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Xunit;

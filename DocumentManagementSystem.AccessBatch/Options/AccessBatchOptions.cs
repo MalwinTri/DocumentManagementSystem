@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.AccessBatch.Options;
+namespace DocumentManagementSystem.AccessBatch.Options;
 
 public sealed class AccessBatchOptions
 {

@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.Elasticsearch.Configuration;
+namespace DocumentManagementSystem.Elasticsearch.Configuration;
 
 public class ElasticsearchOptions
 {

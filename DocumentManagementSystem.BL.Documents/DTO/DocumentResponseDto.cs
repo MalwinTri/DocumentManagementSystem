@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.Dto;
+namespace DocumentManagementSystem.Dto;
 
 public record ExtractedEntityDto(string Type, string Value);
 
