@@ -6,6 +6,7 @@ using Xunit;
 public class OcrCliSmokeTests
 {
     [Fact]
+    [Trait("Category", "OcrSmoke")]
     public async Task Tesseract_reads_text_from_generated_image()
     {
         // 1) Testbild erzeugen
@@ -34,6 +35,7 @@ public class OcrCliSmokeTests
     }
 
     [Fact]
+    [Trait("Category", "OcrSmoke")]
     public async Task Tesseract_version_is_displayed()
     {
         var (stdout, stderr, code) = await RunCliAsync(TesseractExe(), "--version");

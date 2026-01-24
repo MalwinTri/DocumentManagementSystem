@@ -16,6 +16,7 @@ public class OcrPdfCliTests
     }
 
     [Fact]
+    [Trait("Category", "OcrSmoke")]
     public async Task Pdf_to_Tiff_then_Tesseract_returns_text()
     {
         var pdf = Path.Combine(Path.GetTempPath(), $"ocr_{Guid.NewGuid():N}.pdf");
