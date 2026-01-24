@@ -55,13 +55,15 @@ jobs:
       # LINTING (dotnet format)
       # -----------------------
       - name: Install dotnet format
-        run: dotnet tool install --global dotnet-format
+        run: dotnet tool install -g dotnet-format
 
       - name: Add dotnet tools to PATH
         run: echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
+      # Wichtig: no-restore, damit NU190x (Vulnerability Restore-Warnings) das Format nicht stören
       - name: Lint (dotnet format)
-        run: dotnet format --verify-no-changes --verbosity minimal
+        run: dotnet format --verify-no-changes --no-restore --verbosity minimal
+
 
       # -----------------------
       # TESTS
