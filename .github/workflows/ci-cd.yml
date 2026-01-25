@@ -92,7 +92,8 @@ jobs:
           # - rpc_bind_addr and rpc_secret must be at ROOT level
           cat > .ci/garage/garage.toml <<TOML
           replication_factor = 1
-          consistency_mode = "strong"
+          # Try removing the consistency_mode or make sure it's set correctly.
+          consistency_mode = "eventual"
 
           metadata_dir = "/var/lib/garage/meta"
           data_dir = "/var/lib/garage/data"
