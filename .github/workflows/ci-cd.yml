@@ -83,7 +83,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Unit Tests (exclude OCR smoke)
+      - name: Build Tests (ensure DLL exists)
+        run: dotnet build ./DocumentManagementSystem.Tests/DocumentManagementSystem.Tests.csproj -c Release
+
+      - name: Run Unit Tests (exclude OCR smoke)
         run: dotnet test ./DocumentManagementSystem.Tests/DocumentManagementSystem.Tests.csproj -c Release --no-build --verbosity normal --filter "Category!=OcrSmoke"
 
   deploy:
@@ -103,7 +106,7 @@ jobs:
           else
             sudo apt-get update
             sudo apt-get install -y unzip curl
-            curl -sS "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            curl -sS "https://awscli.amazonaws.com/awscliv2-exe-linux-x86_64.zip" -o "awscliv2.zip"
             unzip -q awscliv2.zip
             sudo ./aws/install
             aws --version
