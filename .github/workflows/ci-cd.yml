@@ -82,7 +82,7 @@ jobs:
         run: |
           set -euxo pipefail
 
-          mkdir -p .ci/garage/{meta,data}
+          mkdir -p .ci/garage/meta .ci/garage/data
 
           cat > .ci/garage/garage.toml <<'TOML'
           metadata_dir = "/var/lib/garage/meta"
@@ -99,8 +99,10 @@ jobs:
           api_bind_addr = "0.0.0.0:3903"
           TOML
 
+          # clean old container (just in case)
           docker rm -f garage >/dev/null 2>&1 || true
 
+          # IMPORTANT: run the correct binary inside container: "garage server"
           docker run -d --name garage \
             -p 3900:3900 -p 3903:3903 \
             -e GARAGE_CONFIG_FILE=/etc/garage.toml \
@@ -110,9 +112,13 @@ jobs:
             dxflrs/garage:v2.1.0 \
             garage server
 
-          for i in {1..30}; do
-            curl -fsS "$CI_GARAGE_ADMIN/health" >/dev/null && break || true
-            echo "Waiting for Garage... ($i/30)"
+          # wait until admin API is up
+          for i in {1..60}; do
+            if curl -fsS "$CI_GARAGE_ADMIN/health" >/dev/null; then
+              echo "Garage is healthy."
+              break
+            fi
+            echo "Waiting for Garage... ($i/60)"
             sleep 2
           done
 
@@ -142,6 +148,7 @@ jobs:
 
       - name: Wait for Postgres
         run: |
+          set -euxo pipefail
           for i in {1..30}; do
             pg_isready -h localhost -p 5433 -U "${{ secrets.CI_DB_USER }}" -d "${{ secrets.CI_DB_NAME }}" && exit 0
             echo "Postgres not ready yet... ($i/30)"
@@ -152,8 +159,9 @@ jobs:
 
       - name: Wait for RabbitMQ
         run: |
+          set -euxo pipefail
           for i in {1..30}; do
-            curl --silent --fail http://localhost:15672 >/dev/null && exit 0
+            curl -fsS http://localhost:15672 >/dev/null && exit 0
             echo "RabbitMQ not ready yet... ($i/30)"
             sleep 2
           done
