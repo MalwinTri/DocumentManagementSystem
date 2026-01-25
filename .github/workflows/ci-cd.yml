@@ -99,13 +99,16 @@ jobs:
           api_bind_addr = "0.0.0.0:3903"
           TOML
 
+          docker rm -f garage >/dev/null 2>&1 || true
+
           docker run -d --name garage \
             -p 3900:3900 -p 3903:3903 \
+            -e GARAGE_CONFIG_FILE=/etc/garage.toml \
             -v "$PWD/.ci/garage/garage.toml:/etc/garage.toml:ro" \
             -v "$PWD/.ci/garage/meta:/var/lib/garage/meta" \
             -v "$PWD/.ci/garage/data:/var/lib/garage/data" \
             dxflrs/garage:v2.1.0 \
-            /garage server /etc/garage.toml
+            garage server
 
           for i in {1..30}; do
             curl -fsS "$CI_GARAGE_ADMIN/health" >/dev/null && break || true
