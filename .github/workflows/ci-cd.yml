@@ -57,7 +57,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: build
+    needs: lint
 
     services:
       postgres:
@@ -146,25 +146,15 @@ jobs:
             dxflrs/garage:v2.1.0
           for i in {1..120}; do
             if ! docker ps --format '{{.Names}}' | grep -qx garage; then
-              echo "Garage container exited/crashed. Logs:"
-              docker logs garage --tail 300 || true
               exit 1
             fi
             if docker exec garage /garage status >/dev/null 2>&1; then
-              echo "Garage is up."
               break
             fi
-            echo "Waiting for Garage... ($i/120)"
-            docker logs garage --tail 80 || true
             sleep 1
           done
-          echo "--- garage status ---"
-          docker exec garage /garage status || true
           NODE_ID="$(docker exec garage /garage status | awk 'NR>1 && $1 ~ /^[0-9a-f]+$/ {print $1; exit}')"
           if [ -z "$NODE_ID" ]; then
-            echo "Could not detect NODE_ID from /garage status"
-            docker exec garage /garage status || true
-            docker logs garage --tail 300 || true
             exit 1
           fi
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
@@ -179,7 +169,6 @@ jobs:
           
           # Ensure the key creation output is valid
           if [ -z "$KEY_OUT" ]; then
-            echo "Failed to create Garage key."
             exit 1
           fi
           # Extract Access Key and Secret Key from KEY_OUT
@@ -187,30 +176,8 @@ jobs:
           SECRET_KEY="$(echo "$KEY_OUT" | sed -n 's/^[[:space:]]*Secret key:[[:space:]]*//p' | head -n 1 | tr -d '\r')"
           # Check if keys are empty
           if [ -z "$ACCESS_KEY" ] || [ -z "$SECRET_KEY" ]; then
-            echo "Failed to parse Key ID / Secret key."
             exit 1
           fi
           # Create bucket and assign permissions
           docker exec garage /garage bucket create "$GARAGE_BUCKET" || true
           docker exec garage /garage bucket allow --read --write --owner "$GARAGE_BUCKET" --key "$GARAGE_KEY_NAME"
-          # Output the results
-          echo "--- garage key list ---"
-          docker exec garage /garage key list || true
-          echo "--- garage bucket list ---"
-          docker exec garage /garage bucket list || true
-          echo "--- garage bucket info ---"
-          docker exec garage /garage bucket info "$GARAGE_BUCKET" || true
-          
-          # Export keys to the GitHub environment
-          {
-            echo "GARAGE_S3_ENDPOINT=$GARAGE_S3_ENDPOINT"
-            echo "GARAGE_BUCKET=$GARAGE_BUCKET"
-            echo "GARAGE_ACCESS_KEY=$ACCESS_KEY"
-            echo "GARAGE_SECRET_KEY=$SECRET_KEY"
-            echo "AWS_ACCESS_KEY_ID=$ACCESS_KEY"
-            echo "AWS_SECRET_ACCESS_KEY=$SECRET_KEY"
-            echo "AWS_DEFAULT_REGION=garage"
-            echo "AWS_EC2_METADATA_DISABLED=true"
-            echo "AWS_S3_FORCE_PATH_STYLE=true"
-            echo "AWS_ENABLE_ENDPOINT_DISCOVERY=false"
-          } >> "$GITHUB_ENV"
