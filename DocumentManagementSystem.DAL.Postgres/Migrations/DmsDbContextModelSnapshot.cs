@@ -20,6 +20,7 @@ namespace DocumentManagementSystem.Migrations
                 .HasAnnotation("ProductVersion", "9.0.9")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "citext");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("DocumentManagementSystem.Models.Document", b =>
@@ -69,6 +70,24 @@ namespace DocumentManagementSystem.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Documents");
+                });
+
+            modelBuilder.Entity("DocumentManagementSystem.Models.DocumentDailyAccess", b =>
+                {
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer");
+
+                    b.HasKey("DocumentId", "Day");
+
+                    b.HasIndex("Day");
+
+                    b.ToTable("DocumentDailyAccesses", (string)null);
                 });
 
             modelBuilder.Entity("DocumentManagementSystem.Models.DocumentEmbedding", b =>
@@ -159,7 +178,7 @@ namespace DocumentManagementSystem.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasColumnType("citext");
 
                     b.HasKey("Id");
 
@@ -182,6 +201,17 @@ namespace DocumentManagementSystem.Migrations
                     b.HasIndex("TagsId");
 
                     b.ToTable("DocumentTag");
+                });
+
+            modelBuilder.Entity("DocumentManagementSystem.Models.DocumentDailyAccess", b =>
+                {
+                    b.HasOne("DocumentManagementSystem.Models.Document", "Document")
+                        .WithMany("DailyAccess")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
                 });
 
             modelBuilder.Entity("DocumentManagementSystem.Models.DocumentEmbedding", b =>
@@ -234,6 +264,8 @@ namespace DocumentManagementSystem.Migrations
 
             modelBuilder.Entity("DocumentManagementSystem.Models.Document", b =>
                 {
+                    b.Navigation("DailyAccess");
+
                     b.Navigation("Embedding");
 
                     b.Navigation("ExtractedEntities");

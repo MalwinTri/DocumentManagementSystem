@@ -74,6 +74,7 @@
     <ProjectReference Include="..\DocumentManagementSystem.DAL.Postgres\DocumentManagementSystem.DAL.Postgres.csproj" />
     <ProjectReference Include="..\DocumentManagementSystem.DAL\DocumentManagementSystem.DAL.csproj" />
     <ProjectReference Include="..\DocumentManagementSystem.Elasticsearch\DocumentManagementSystem.Elasticsearch.csproj" />
+    <ProjectReference Include="..\Shared.Exceptions\DocumentManagementSystem.Shared.Exceptions.csproj" />
   </ItemGroup>
 
 

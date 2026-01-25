@@ -107,22 +107,11 @@ namespace DocumentManagementSystem.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "DocumentEmbeddings");
+            migrationBuilder.DropTable(name: "DocumentEmbeddings");
+            migrationBuilder.DropTable(name: "DocumentMetadatas");
+            migrationBuilder.DropTable(name: "ExtractedEntities");
 
-            migrationBuilder.DropTable(
-                name: "DocumentMetadatas");
-
-            migrationBuilder.DropTable(
-                name: "ExtractedEntities");
-
-            migrationBuilder.DropIndex(
-                name: "IX_Tags_Name",
-                table: "Tags");
-
-            migrationBuilder.DropColumn(
-                name: "OcrText",
-                table: "Documents");
+            migrationBuilder.DropIndex(name: "IX_Tags_Name", table: "Tags");
 
             migrationBuilder.DropColumn(
                 name: "Summary",

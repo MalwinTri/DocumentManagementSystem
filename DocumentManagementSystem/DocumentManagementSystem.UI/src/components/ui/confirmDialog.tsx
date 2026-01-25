@@ -4,22 +4,19 @@ import {
     AlertDialogAction,
     AlertDialogCancel,
     AlertDialogContent,
-    AlertDialogDescription,
     AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
-} from "@/components/ui/alert-dialog"; 
+} from "@/components/ui/alert-dialog";
 
 export type ConfirmOptions = {
     title?: React.ReactNode;
-    description?: React.ReactNode;
     confirmText?: string;
     cancelText?: string;
     destructive?: boolean;
 };
 
-type ConfirmFn = (opts?: ConfirmOptions) => Promise<boolean>; 
-
+type ConfirmFn = (opts?: ConfirmOptions) => Promise<boolean>;
 
 const ConfirmContext = React.createContext<ConfirmFn | null>(null);
 
@@ -34,6 +31,12 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     const [opts, setOpts] = React.useState<ConfirmOptions>({});
     const resolver = React.useRef<((v: boolean) => void) | null>(null);
 
+    const close = React.useCallback((value: boolean) => {
+        setOpen(false);
+        resolver.current?.(value);
+        resolver.current = null;
+    }, []);
+
     const confirm = React.useCallback<ConfirmFn>((options) => {
         setOpts(options ?? {});
         setOpen(true);
@@ -42,29 +45,35 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
         });
     }, []);
 
-    const close = (value: boolean) => {
-        setOpen(false);
-        resolver.current?.(value);
-    };
+    // WICHTIG: Overlay/ESC schließt => Promise MUSS auf false auflösen
+    const handleOpenChange = React.useCallback(
+        (nextOpen: boolean) => {
+            if (!nextOpen && resolver.current) {
+                close(false);
+                return;
+            }
+            setOpen(nextOpen);
+        },
+        [close]
+    );
 
     return (
         <ConfirmContext.Provider value={confirm}>
             {children}
-            <AlertDialog open={open} onOpenChange={setOpen}>
+
+            <AlertDialog open={open} onOpenChange={handleOpenChange}>
                 <AlertDialogContent className="rounded-2xl">
                     <AlertDialogHeader>
                         <AlertDialogTitle>{opts.title ?? "Are you sure?"}</AlertDialogTitle>
-                        {opts.description && (
-                            <AlertDialogDescription>{opts.description}</AlertDialogDescription>
-                        )}
                     </AlertDialogHeader>
+
                     <AlertDialogFooter>
                         <AlertDialogCancel className="rounded-xl" onClick={() => close(false)}>
                             {opts.cancelText ?? "Cancel"}
                         </AlertDialogCancel>
+
                         <AlertDialogAction
-                            className={`rounded-xl ${opts.destructive ? "bg-red-600 hover:bg-red-700" : ""
-                                }`}
+                            className={`rounded-xl ${opts.destructive ? "bg-red-600 hover:bg-red-700" : ""}`}
                             onClick={() => close(true)}
                         >
                             {opts.confirmText ?? "Continue"}

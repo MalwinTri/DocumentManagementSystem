@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.Dto;
+namespace DocumentManagementSystem.Dto;
 
 public record ExtractedEntityDto(string Type, string Value);
 
@@ -23,7 +23,6 @@ public record DocumentResponseDto(
     string? OcrText,
     string? Summary,
 
-    // --- NEU: Unique Feature sichtbar ---
     DocumentMetadataDto? Metadata,
     List<ExtractedEntityDto> Entities,
     DocumentEmbeddingDto? Embedding

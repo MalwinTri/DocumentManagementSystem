@@ -1,4 +1,4 @@
-﻿using DocumentManagementSystem.Infrastructure.Exceptions;
+using DocumentManagementSystem.Infrastructure.Exceptions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Net;
@@ -14,13 +14,11 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
         private readonly GeminiOptions _options;
         private readonly ILogger<GeminiService> _logger;
 
-        // fürs Parsen (Responses)
         private static readonly JsonSerializerOptions JsonReadOpts = new(JsonSerializerDefaults.Web)
         {
             PropertyNameCaseInsensitive = true
         };
 
-        // fürs Senden (Nulls NICHT mitsenden)
         private static readonly JsonSerializerOptions JsonSendOpts = new(JsonSerializerDefaults.Web)
         {
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
@@ -41,10 +39,32 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
             if (string.IsNullOrWhiteSpace(text))
                 return null;
 
+            // Wichtig: Gemini 2.5 produziert sonst "thoughtsTokenCount" und frisst dein Token-Budget
+            // -> führt zu finishReason MAX_TOKENS obwohl sichtbarer Text kurz ist.
+            // Lösung: thinkingBudget = 0
             var prompt =
-                "Fasse den folgenden Text kurz und verständlich zusammen (max. 25 Wörter, 1-2 Sätze).\n\n" +
-                Clip(text, 12000);
+                "Erstelle eine verständliche Zusammenfassung dieses Dokuments.\n" +
+                "Format (genau so ausgeben):\n" +
+                "ZEILE 1: Ein klarer Satz, worum es geht.\n" +
+                "DANACH: 4 bis 6 Stichpunkte mit den wichtigsten Inhalten.\n" +
+                "Regeln:\n" +
+                "- Schreibe konkret, nenne relevante Begriffe/Funktionen/Technologien aus dem Text.\n" +
+                "- Keine Klammern.\n" +
+                "- Keine Einleitung wie \"Dieses Dokument...\" wenn möglich.\n" +
+                "- Kein Markdown, nur Klartext.\n\n" +
+                "TEXT:\n" + Clip(text, 10000);
 
+            // 1) normaler Versuch
+            var s = await GenerateSummaryInternalAsync(prompt, maxOutputTokens: 700, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(s))
+                return s;
+
+            // 2) Fallback (falls doch truncation / komisches Format)
+            return await GenerateSummaryInternalAsync(prompt, maxOutputTokens: 1200, cancellationToken);
+        }
+
+        private async Task<string?> GenerateSummaryInternalAsync(string prompt, int maxOutputTokens, CancellationToken ct)
+        {
             var request = new GeminiRequest
             {
                 Contents =
@@ -57,17 +77,22 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
                 GenerationConfig = new GeminiGenerationConfig
                 {
                     Temperature = 0.2,
-                    MaxOutputTokens = 250
-                    // KEIN ResponseSchema setzen (und dank JsonIgnore wird auch nichts Null mitgesendet)
+                    MaxOutputTokens = maxOutputTokens,
+
+                    // KEY-FIX: Thinking aus (verhindert MAX_TOKENS durch thoughtsTokenCount)
+                    ThinkingConfig = new GeminiThinkingConfig
+                    {
+                        ThinkingBudget = 0,
+                        IncludeThoughts = false
+                    }
                 }
             };
 
             var url = $"{_options.BaseUrl}/{_options.Model}:generateContent?key={_options.ApiKey}";
 
-            using var response = await PostJsonAsync(url, request, cancellationToken);
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var response = await PostJsonAsync(url, request, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
 
-            // 429 sauber behandeln → Worker kann Backoff speichern
             if (response.StatusCode == (HttpStatusCode)429)
                 throw new AiRateLimitException(TryParseRetryDelay(body) ?? TimeSpan.FromSeconds(60), body);
 
@@ -79,21 +104,20 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
 
             var geminiResponse = JsonSerializer.Deserialize<GeminiResponse>(body, JsonReadOpts);
 
-            var summary = geminiResponse?
-                .Candidates?
-                .FirstOrDefault()?
-                .Content?
-                .Parts?
-                .FirstOrDefault()?
-                .Text;
+            var finishReason = geminiResponse?.Candidates?.FirstOrDefault()?.FinishReason;
+            if (string.Equals(finishReason, "MAX_TOKENS", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Gemini Summary hit MAX_TOKENS (truncated).");
+                return null; // -> caller macht fallback mit mehr Tokens
+            }
 
-            summary = summary?.Trim();
+            var summaryText = ExtractTextFromResponse(geminiResponse);
+            summaryText = NormalizeSummary(summaryText);
 
-            // NICHT einfach null returnen, sonst spammt dein Worker wieder sofort.
-            if (string.IsNullOrWhiteSpace(summary))
-                throw new InvalidOperationException("Gemini Summary returned empty text");
+            // kleine Format-Stabilisierung (falls Modell keine Bulletpoints liefert)
+            summaryText = ForceSummaryShape(summaryText);
 
-            return summary;
+            return string.IsNullOrWhiteSpace(summaryText) ? null : summaryText;
         }
 
         public async Task<AiExtractionResult?> ExtractMetadataAsync(string text, CancellationToken cancellationToken = default)
@@ -102,10 +126,16 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
                 return null;
 
             var prompt =
-                "Extrahiere strukturierte Metadaten aus dem Text. " +
-                "Gib NUR JSON zurück (kein Markdown, keine Erklärungen). " +
-                "Wenn etwas fehlt: null oder leere Liste.\n\nTEXT:\n" +
-                Clip(text, 18000);
+                "Extrahiere strukturierte Metadaten aus dem Text.\n" +
+                "Gib NUR ein gültiges JSON-Objekt zurück (kein Markdown, keine Erklärungen).\n" +
+                "Regeln:\n" +
+                "- persons: max 8\n" +
+                "- organizations: max 8\n" +
+                "- locations: max 8\n" +
+                "- keywords: max 12\n" +
+                "- Strings kurz halten (max ~80 Zeichen)\n" +
+                "- Wenn etwas fehlt: null oder []\n\n" +
+                "TEXT:\n" + Clip(text, 10000);
 
             var request = new GeminiRequest
             {
@@ -119,9 +149,16 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
                 GenerationConfig = new GeminiGenerationConfig
                 {
                     ResponseMimeType = "application/json",
-                    ResponseSchema = BuildExtractionSchema(), 
+                    ResponseJsonSchema = BuildExtractionSchema(),
                     Temperature = 0.0,
-                    MaxOutputTokens = 900
+                    MaxOutputTokens = 2048,
+
+                    // Auch hier: Thinking aus, damit JSON nicht wegen thoughts gekappt wird
+                    ThinkingConfig = new GeminiThinkingConfig
+                    {
+                        ThinkingBudget = 0,
+                        IncludeThoughts = false
+                    }
                 }
             };
 
@@ -141,18 +178,20 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
 
             var geminiResponse = JsonSerializer.Deserialize<GeminiResponse>(body, JsonReadOpts);
 
-            var jsonText = geminiResponse?
-                .Candidates?
-                .FirstOrDefault()?
-                .Content?
-                .Parts?
-                .FirstOrDefault()?
-                .Text;
+            var finishReason = geminiResponse?.Candidates?.FirstOrDefault()?.FinishReason;
+            if (string.Equals(finishReason, "MAX_TOKENS", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Gemini ExtractMetadata hit MAX_TOKENS (JSON likely truncated).");
+                throw new InvalidOperationException("Gemini ExtractMetadata output was truncated (MAX_TOKENS)");
+            }
 
-            jsonText = ExtractJsonObject(jsonText);
+            var jsonText = ExtractJsonFromResponse(geminiResponse);
 
             if (string.IsNullOrWhiteSpace(jsonText))
+            {
+                _logger.LogWarning("Gemini ExtractMetadata returned no JSON (or could not be parsed). Raw body: {Body}", body);
                 throw new InvalidOperationException("Gemini ExtractMetadata returned empty JSON");
+            }
 
             var result = JsonSerializer.Deserialize<AiExtractionResult>(jsonText, JsonReadOpts)
                          ?? throw new InvalidOperationException("Gemini ExtractMetadata JSON could not be parsed");
@@ -201,7 +240,6 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
 
         private async Task<HttpResponseMessage> PostJsonAsync<T>(string url, T payload, CancellationToken ct)
         {
-            // sorgt dafür, dass null-Felder NICHT gesendet werden (zusätzlich zu JsonIgnore)
             var content = JsonContent.Create(payload, options: JsonSendOpts);
             return await _httpClient.PostAsync(url, content, ct);
         }
@@ -212,13 +250,77 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
             return s.Length <= maxChars ? s : s[..maxChars];
         }
 
-        // Falls Gemini doch ```json ...``` liefert → JSON sauber rausziehen
+        private static string NormalizeSummary(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return s ?? "";
+            s = s.Trim();
+
+            // Klammern komplett entfernen
+            s = s.Replace("(", "").Replace(")", "");
+
+            // Mehrfachspaces bereinigen
+            while (s.Contains("  "))
+                s = s.Replace("  ", " ");
+
+            return s;
+        }
+
+        private static string ForceSummaryShape(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return s ?? "";
+
+            var lines = s.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+            if (lines.Count == 0) return s;
+
+            // Wenn keine Bulletpoints vorhanden sind, erzwinge welche (robust bei OCR/Random Output)
+            var hasBullets = lines.Skip(1).Any(l => l.StartsWith("- ") || l.StartsWith("• "));
+            if (!hasBullets && lines.Count > 1)
+            {
+                for (int i = 1; i < lines.Count; i++)
+                    lines[i] = "- " + lines[i].TrimStart('-', '•', ' ').Trim();
+            }
+
+            // Limit: max 1 Satz + 6 bullets
+            var first = lines[0];
+            var bullets = lines.Skip(1).Take(6).ToList();
+            var result = new List<string> { first };
+            result.AddRange(bullets);
+
+            return string.Join("\n", result).Trim();
+        }
+
+        // ---- Response parsing helpers ----
+
+        private static string? ExtractTextFromResponse(GeminiResponse? resp)
+        {
+            var parts = resp?.Candidates?.FirstOrDefault()?.Content?.Parts;
+            if (parts == null || parts.Count == 0) return null;
+
+            var combined = string.Join("\n",
+                parts.Select(p => p.Text).Where(t => !string.IsNullOrWhiteSpace(t)));
+
+            return string.IsNullOrWhiteSpace(combined) ? null : combined;
+        }
+
+        private static string? ExtractJsonFromResponse(GeminiResponse? resp)
+        {
+            var parts = resp?.Candidates?.FirstOrDefault()?.Content?.Parts;
+            if (parts == null || parts.Count == 0) return null;
+
+            var combinedText = string.Join("\n",
+                parts.Select(p => p.Text).Where(t => !string.IsNullOrWhiteSpace(t)));
+
+            if (string.IsNullOrWhiteSpace(combinedText))
+                return null;
+
+            return ExtractJsonObject(combinedText);
+        }
+
         private static string? ExtractJsonObject(string? s)
         {
             if (string.IsNullOrWhiteSpace(s)) return null;
             s = s.Trim();
 
-            // code fences entfernen
             if (s.StartsWith("```"))
             {
                 var firstNewline = s.IndexOf('\n');
@@ -235,7 +337,6 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
             return s.Substring(start, end - start + 1).Trim();
         }
 
-        // 429 body enthält oft retryDelay: "49s"
         private static TimeSpan? TryParseRetryDelay(string json)
         {
             try
@@ -250,24 +351,20 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
                         type.GetString()?.EndsWith("RetryInfo") == true &&
                         d.TryGetProperty("retryDelay", out var rd))
                     {
-                        var s = rd.GetString(); // "49s"
+                        var s = rd.GetString();
                         if (!string.IsNullOrWhiteSpace(s) && s.EndsWith("s") &&
                             int.TryParse(s.TrimEnd('s'), out var sec))
                             return TimeSpan.FromSeconds(sec);
                     }
                 }
             }
-            catch
-            {
-                // ignore
-            }
+            catch { }
 
             return null;
         }
 
         private static object BuildExtractionSchema()
         {
-            // JSON Schema Objekt (simple)
             return new
             {
                 type = "object",
@@ -282,14 +379,35 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
                             new { type = "null" }
                         }
                     },
-                    invoiceNumber = new { anyOf = new object[] { new { type = "string" }, new { type = "null" } } },
-                    iban = new { anyOf = new object[] { new { type = "string" }, new { type = "null" } } },
-                    persons = new { type = "array", items = new { type = "string" }, maxItems = 20 },
-                    organizations = new { type = "array", items = new { type = "string" }, maxItems = 20 },
-                    locations = new { type = "array", items = new { type = "string" }, maxItems = 20 },
-                    keywords = new { type = "array", items = new { type = "string" }, maxItems = 20 }
+                    invoiceNumber = new { anyOf = new object[] { new { type = "string", maxLength = 80 }, new { type = "null" } } },
+                    iban = new { anyOf = new object[] { new { type = "string", maxLength = 80 }, new { type = "null" } } },
+
+                    persons = new
+                    {
+                        type = "array",
+                        maxItems = 8,
+                        items = new { type = "string", maxLength = 80 }
+                    },
+                    organizations = new
+                    {
+                        type = "array",
+                        maxItems = 8,
+                        items = new { type = "string", maxLength = 80 }
+                    },
+                    locations = new
+                    {
+                        type = "array",
+                        maxItems = 8,
+                        items = new { type = "string", maxLength = 80 }
+                    },
+                    keywords = new
+                    {
+                        type = "array",
+                        maxItems = 12,
+                        items = new { type = "string", maxLength = 60 }
+                    }
                 },
-                required = new[] { "documentType", "keywords" },
+                required = new[] { "documentType", "persons", "organizations", "locations", "keywords" },
                 additionalProperties = false
             };
         }

@@ -65,7 +65,7 @@ public class RabbitMqService : IRabbitMqService
             channel.BasicPublish(
                 exchange: "",
                 routingKey: _queueName,
-                mandatory: true,                
+                mandatory: true,
                 basicProperties: props,
                 body: body);
 
@@ -74,7 +74,7 @@ public class RabbitMqService : IRabbitMqService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to publish OCR message to queue {Queue}", _queueName);
-            throw; 
+            throw;
         }
     }
 

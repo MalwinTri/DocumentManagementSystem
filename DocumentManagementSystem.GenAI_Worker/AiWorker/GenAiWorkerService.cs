@@ -1,4 +1,4 @@
-﻿using DocumentManagementSystem.Database;
+using DocumentManagementSystem.Database;
 using DocumentManagementSystem.Elasticsearch.Models;
 using DocumentManagementSystem.Elasticsearch.Services;
 using DocumentManagementSystem.Infrastructure.Exceptions;
@@ -50,7 +50,6 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
 
                 try
                 {
-                    // Nur "fällige" Docs holen (Backoff beachten)
                     doc = await _dbContext.Documents
                         .AsSplitQuery() // EF Warning "MultipleCollectionInclude" entschärfen
                         .Include(d => d.Tags)
@@ -106,7 +105,7 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
                         catch (AiRateLimitException ex)
                         {
                             await StoreRateLimitBackoffAsync(doc, ex, stoppingToken);
-                            _pauseUntilUtc = doc.AiNextAttemptAt; // ✅ global Pause
+                            _pauseUntilUtc = doc.AiNextAttemptAt; // global Pause
                             continue;
                         }
                         catch (Exception ex)
@@ -333,7 +332,7 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
                 return;
 
             var lower = name.ToLowerInvariant();
-            var existing = await _dbContext.Tags.FirstOrDefaultAsync(t => t.Name.ToLower() == lower, ct);
+            var existing = await _dbContext.Tags.FirstOrDefaultAsync(t => t.Name == name, ct);
 
             if (existing == null)
             {

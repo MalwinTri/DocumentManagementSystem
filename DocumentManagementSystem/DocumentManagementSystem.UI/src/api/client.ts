@@ -42,5 +42,3 @@ export const api = {
     patch<T>(url: string, body?: any, opts?: RequestOpts) { return request<T>("PATCH", url, body, opts); }, 
     del<T>(url: string, opts?: RequestOpts) { return request<T>("DELETE", url, undefined, opts); },
 };
-
-

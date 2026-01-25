@@ -1,4 +1,4 @@
-﻿using DocumentManagementSystem.BL.Documents;
+using DocumentManagementSystem.BL.Documents;
 using DocumentManagementSystem.Dto;
 using DocumentManagementSystem.Elasticsearch.Services;
 using DocumentManagementSystem.Exceptions;
@@ -21,12 +21,12 @@ public class DocumentsController : ControllerBase
     public DocumentsController(
         DocumentService service,
         IRabbitMqService rabbitMqService,
-        IDocumentSearchService documentSearchService,   // 🔹 hier rein
+        IDocumentSearchService documentSearchService,
         ILogger<DocumentsController> logger)
     {
         _service = service;
         _rabbitMqService = rabbitMqService;
-        _documentSearchService = documentSearchService; // 🔹 Feld setzen
+        _documentSearchService = documentSearchService;
         _logger = logger;
     }
 
@@ -41,17 +41,24 @@ public class DocumentsController : ControllerBase
         }
 
         var errors = new Dictionary<string, string[]>();
-        if (form.File is null || form.File.Length == 0) errors["file"] = new[] { "File is required." };
-        if (string.IsNullOrWhiteSpace(form.Title)) errors["title"] = new[] { "Title is required." };
-        if (errors.Count > 0) throw new ValidationException(errors: errors);
+
+        if (form.File is null || form.File.Length == 0)
+            errors["file"] = new[] { "File is required." };
+
+        if (string.IsNullOrWhiteSpace(form.Title))
+            errors["title"] = new[] { "Title is required." };
+
+        if (errors.Count > 0)
+            throw new ValidationException(errors: errors);
 
         _logger.LogInformation("Upload started for Title={Title}", form.Title);
 
         await using var fileStream = form.File!.OpenReadStream();
         var saved = await _service.CreateAsync(form.Title, form.Description, form.Tags ?? new(), fileStream, ct);
 
-        var isPdf = string.Equals(form.File.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(Path.GetExtension(form.File.FileName), ".pdf", StringComparison.OrdinalIgnoreCase);
+        var isPdf =
+            string.Equals(form.File.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(Path.GetExtension(form.File.FileName), ".pdf", StringComparison.OrdinalIgnoreCase);
 
         if (isPdf)
         {
@@ -65,7 +72,7 @@ public class DocumentsController : ControllerBase
                 UploadedAt = DateTime.UtcNow
             };
 
-            _rabbitMqService.SendOcrMessage(job);      
+            _rabbitMqService.SendOcrMessage(job);
             _logger.LogInformation("OCR job queued for DocumentId={DocumentId} with S3Key={S3Key}", saved.Id, s3Key);
         }
         else
@@ -74,6 +81,7 @@ public class DocumentsController : ControllerBase
         }
 
         _logger.LogInformation("Upload finished for DocumentId={DocumentId}", saved.Id);
+
         return CreatedAtAction(nameof(GetById), new { id = saved.Id }, DocumentMapper.ToDto(saved));
     }
 
@@ -110,6 +118,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> List([FromQuery] int page = 0, [FromQuery] int size = 20, CancellationToken ct = default)
     {
         var (items, total) = await _service.ListAsync(page, size, ct);
+
         return Ok(new
         {
             items = items.Select(DocumentMapper.ToDto).ToList(),
@@ -122,40 +131,37 @@ public class DocumentsController : ControllerBase
     [HttpPatch("{id:guid}")]
     public async Task<IActionResult> Update([FromRoute] Guid id, [FromBody] DocumentUpdateDto dto, CancellationToken ct)
     {
-        if (dto is null) throw new ValidationException(detail: "Body is required");
+        if (dto is null)
+            throw new ValidationException(detail: "Body is required");
+
+        var normalizedSummary = string.IsNullOrWhiteSpace(dto.Summary) ? null : dto.Summary;
 
         var updated = await _service.UpdateAsync(
             id,
             dto.Title,
             dto.Description,
-            dto.Tags,      
-            dto.Summary,    
+            dto.Tags,
+            normalizedSummary,
             ct);
 
         var doc = updated ?? throw NotFoundException.For<Document>(id);
-
         return Ok(DocumentMapper.ToDto(doc));
     }
 
-
     [HttpPut("{id:guid}")]
     public Task<IActionResult> Put([FromRoute] Guid id, [FromBody] DocumentUpdateDto dto, CancellationToken ct)
-    => Update(id, dto, ct);
+        => Update(id, dto, ct);
 
     [HttpGet("search")]
-    public async Task<IActionResult> Search(
-    [FromQuery] string query,
-    CancellationToken ct)
+    public async Task<IActionResult> Search([FromQuery] string query, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(query))
             throw new ValidationException(detail: "Query must not be empty.");
 
         _logger.LogInformation("Search requested. Query=\"{Query}\"", query);
 
-        // 1) Elasticsearch fragen
         var hits = await _documentSearchService.SearchAsync(query, ct);
 
-        // Treffer-Ids in Guids umwandeln
         var ids = hits
             .Select(h => Guid.TryParse(h.Id, out var id) ? id : (Guid?)null)
             .Where(id => id.HasValue)
@@ -168,11 +174,9 @@ public class DocumentsController : ControllerBase
             return Ok(Array.Empty<DocumentResponseDto>());
         }
 
-        // 2) Passende Documents aus der DB holen
         var documents = await _service.GetByIdsAsync(ids, ct);
         var docsById = documents.ToDictionary(d => d.Id);
 
-        // 3) In derselben Reihenfolge wie ES-Hits auf DTO mappen
         var results = new List<DocumentResponseDto>();
 
         foreach (var hit in hits)
@@ -184,8 +188,16 @@ public class DocumentsController : ControllerBase
         }
 
         _logger.LogInformation("Search returning {Count} documents for Query=\"{Query}\"", results.Count, query);
-
         return Ok(results);
     }
 
+    [HttpGet("{id:guid}/similar")]
+    public async Task<IActionResult> Similar([FromRoute] Guid id, [FromQuery] int take = 6, CancellationToken ct = default)
+    {
+        if (take <= 0) take = 6;
+        if (take > 50) take = 50;
+
+        var results = await _service.GetSimilarAsync(id, take, ct);
+        return Ok(results);
+    }
 }

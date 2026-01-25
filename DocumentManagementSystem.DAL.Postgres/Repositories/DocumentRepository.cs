@@ -1,5 +1,4 @@
-﻿using DocumentManagementSystem.DAL;
-using DocumentManagementSystem.DAL.Postgres.Exceptions;
+using DocumentManagementSystem.DAL;
 using DocumentManagementSystem.Exceptions;
 using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;

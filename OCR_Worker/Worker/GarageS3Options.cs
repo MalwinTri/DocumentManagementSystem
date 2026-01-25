@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.OCR_Worker.Worker;
+namespace DocumentManagementSystem.OCR_Worker.Worker;
 
 public sealed class GarageS3Options
 {

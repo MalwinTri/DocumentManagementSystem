@@ -1,4 +1,4 @@
-﻿using QuestPDF.Infrastructure;
+using QuestPDF.Infrastructure;
 using System.Runtime.CompilerServices;
 
 public static class QuestPdfLicense
