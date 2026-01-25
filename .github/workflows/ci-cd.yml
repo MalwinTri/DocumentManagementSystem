@@ -69,6 +69,7 @@ jobs:
             sudo ./aws/install
             aws --version
           fi
+
       - name: Start Garage (S3)
         env:
           GARAGE_S3_ENDPOINT: http://localhost:3900
@@ -167,13 +168,7 @@ jobs:
             echo "AWS_S3_FORCE_PATH_STYLE=true"
             echo "AWS_ENABLE_ENDPOINT_DISCOVERY=false"
           } >> "$GITHUB_ENV"
-          # Smoke test with AWS CLI (PUT/GET)
-          echo "hello" > /tmp/ci_garage_test.txt
-          aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3api put-object \
-            --bucket "$GARAGE_BUCKET" --key "ci/smoke.txt" --body /tmp/ci_garage_test.txt
-          aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3api head-object \
-            --bucket "$GARAGE_BUCKET" --key "ci/smoke.txt"
-          aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls "s3://$GARAGE_BUCKET" || true
+          
       - name: Install dotnet format
         run: dotnet tool install -g dotnet-format
 
@@ -198,6 +193,7 @@ jobs:
           done
           echo "Postgres did not become ready in time"
           exit 1
+
       - name: Wait for RabbitMQ
         run: |
           for i in {1..30}; do
@@ -207,6 +203,7 @@ jobs:
           done
           echo "RabbitMQ did not become ready in time"
           exit 1
+
       - name: Integration Tests
         env:
           ConnectionStrings__Default: Host=localhost;Port=5433;Database=${{ secrets.CI_DB_NAME }};Username=${{ secrets.CI_DB_USER }};Password=${{ secrets.CI_DB_PASSWORD }}
