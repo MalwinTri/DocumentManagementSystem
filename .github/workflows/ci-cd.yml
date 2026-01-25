@@ -21,13 +21,26 @@ jobs:
     name: Build, Lint & Test
     runs-on: ubuntu-latest
 
+    env:
+      # Postgres (CI defaults)
+      CI_DB_USER: postgres
+      CI_DB_PASSWORD: postgres
+      CI_DB_NAME: dms
+      CI_DB_PORT: "5433"
+
+      # Garage (CI defaults)
+      CI_GARAGE_S3_ENDPOINT: http://localhost:3900
+      CI_GARAGE_ADMIN_ENDPOINT: http://localhost:3903
+      CI_GARAGE_BUCKET: dms-ci
+      CI_GARAGE_KEY_NAME: dms-ci-key
+
     services:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER: ${{ secrets.CI_DB_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
-          POSTGRES_DB: ${{ secrets.CI_DB_NAME }}
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dms
         ports:
           - 5433:5432
         options: >-
@@ -60,47 +73,48 @@ jobs:
       - name: Ensure AWS CLI v2
         run: |
           set -euxo pipefail
-          aws --version
+          if command -v aws >/dev/null 2>&1; then
+            aws --version
+          else
+            sudo apt-get update
+            sudo apt-get install -y unzip curl
+            curl -sS "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip -q awscliv2.zip
+            sudo ./aws/install
+            aws --version
+          fi
 
-      # -----------------------
-      # Start Garage (single-node) + init layout + bucket + key
-      # -----------------------
-      - name: Start & Init Garage (S3)
-        env:
-          CI_GARAGE_ENDPOINT: http://localhost:3900
-          CI_GARAGE_ADMIN: http://localhost:3903
-          CI_S3_BUCKET: ${{ secrets.CI_S3_BUCKET }}
+      - name: Start Garage (S3) + init bucket/key
         run: |
           set -euxo pipefail
 
-          # Clean up if rerun
+          # clean old container if any (don't fail if not existing)
           docker rm -f garage >/dev/null 2>&1 || true
 
-          mkdir -p .ci/garage/{meta,data}
+          mkdir -p .ci/garage/meta .ci/garage/data
 
-          # Minimal single-node config for Garage v2.x
+          # Minimal single-node Garage config
           cat > .ci/garage/garage.toml <<'TOML'
           metadata_dir = "/var/lib/garage/meta"
           data_dir = "/var/lib/garage/data"
           db_engine = "lmdb"
 
-          # required for v2.x
-          replication_factor = 1
+          # single-node / no replication
+          replication_mode = "none"
+
+          # internal RPC
           rpc_bind_addr = "0.0.0.0:3901"
           rpc_public_addr = "127.0.0.1:3901"
-
-          # any random secret (only for CI)
-          rpc_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          rpc_secret = "0000000000000000000000000000000000000000000000000000000000000000"
 
           [s3_api]
-          api_bind_addr = "0.0.0.0:3900"
           s3_region = "garage"
+          api_bind_addr = "0.0.0.0:3900"
 
           [admin]
           api_bind_addr = "0.0.0.0:3903"
           TOML
 
-          # Run Garage with its default entrypoint/cmd
           docker run -d --name garage \
             -p 3900:3900 -p 3901:3901 -p 3903:3903 \
             -v "$PWD/.ci/garage/garage.toml:/etc/garage.toml:ro" \
@@ -109,7 +123,7 @@ jobs:
             -e GARAGE_CONFIG_FILE=/etc/garage.toml \
             dxflrs/garage:v2.1.0
 
-          # Wait until Garage responds
+          # wait until CLI status works
           for i in {1..60}; do
             if docker exec garage /garage status >/dev/null 2>&1; then
               echo "Garage is up."
@@ -124,52 +138,55 @@ jobs:
           echo "--- garage logs (tail) ---"
           docker logs garage --tail 200 || true
 
-          # Layout init (required!)
-          # Extract node id from status output (first ID-looking token)
+          # get node id and assign role/capacity
           NODE_ID="$(docker exec garage /garage status | grep -Eo '[a-f0-9]{8,}' | head -n 1 || true)"
           if [ -z "$NODE_ID" ]; then
-            echo "Could not extract NODE_ID from 'garage status'"
+            echo "Could not determine NODE_ID from 'garage status'"
             exit 1
           fi
           echo "NODE_ID=$NODE_ID"
 
-          # Assign 1G capacity in zone dc1, then apply (pipe yes to avoid prompt)
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
-          yes | docker exec -i garage /garage layout apply
 
-          # Create bucket + key, allow RW+owner
-          docker exec garage /garage bucket create "$CI_S3_BUCKET" || true
-          docker exec garage /garage key create ci-key || true
-          docker exec garage /garage bucket allow "$CI_S3_BUCKET" --read --write --owner --key ci-key
+          # IMPORTANT: layout apply requires version
+          docker exec garage /garage layout apply --version 1
 
-          # Read credentials
-          INFO="$(docker exec garage /garage key info ci-key --show-secret)"
-          echo "$INFO"
+          echo "--- layout show ---"
+          docker exec garage /garage layout show || true
 
-          ACCESS_KEY="$(echo "$INFO" | awk -F': ' '/Key ID/ {print $2}' | head -n1)"
-          SECRET_KEY="$(echo "$INFO" | awk -F': ' '/Secret key/ {print $2}' | head -n1)"
+          # Create bucket + key inside Garage
+          docker exec garage /garage bucket create "${CI_GARAGE_BUCKET}" || true
+
+          KEY_OUT="$(docker exec garage /garage key create "${CI_GARAGE_KEY_NAME}")"
+          echo "$KEY_OUT"
+
+          # parse Key ID + Secret key
+          ACCESS_KEY="$(echo "$KEY_OUT" | awk -F': ' '/Key ID/ {print $2}' | tr -d '\r')"
+          SECRET_KEY="$(echo "$KEY_OUT" | awk -F': ' '/Secret key/ {print $2}' | tr -d '\r')"
 
           if [ -z "$ACCESS_KEY" ] || [ -z "$SECRET_KEY" ]; then
-            echo "Failed to parse Garage key credentials."
+            echo "Failed to parse Garage key output"
             exit 1
           fi
 
-          # Export for later steps (AWS CLI + Integration tests)
+          # Allow key on bucket (read/write/owner)
+          docker exec garage /garage bucket allow --read --write --owner "${CI_GARAGE_BUCKET}" --key "${CI_GARAGE_KEY_NAME}"
+
+          # Export for later steps (AWS CLI + tests)
           {
             echo "AWS_ACCESS_KEY_ID=$ACCESS_KEY"
             echo "AWS_SECRET_ACCESS_KEY=$SECRET_KEY"
             echo "AWS_DEFAULT_REGION=garage"
-            echo "GARAGE_ENDPOINT=$CI_GARAGE_ENDPOINT"
-            echo "GARAGE_BUCKET=$CI_S3_BUCKET"
+            echo "CI_GARAGE_ACCESS_KEY=$ACCESS_KEY"
+            echo "CI_GARAGE_SECRET_KEY=$SECRET_KEY"
           } >> "$GITHUB_ENV"
 
-          # Quick S3 check
-          aws --endpoint-url "$CI_GARAGE_ENDPOINT" s3 ls || true
-          aws --endpoint-url "$CI_GARAGE_ENDPOINT" s3 ls "s3://$CI_S3_BUCKET" || true
+      - name: Smoke check Garage via AWS CLI
+        run: |
+          set -euxo pipefail
+          aws --endpoint-url "$CI_GARAGE_S3_ENDPOINT" s3 ls
+          aws --endpoint-url "$CI_GARAGE_S3_ENDPOINT" s3 ls "s3://$CI_GARAGE_BUCKET" || true
 
-      # -----------------------
-      # LINTING (dotnet format)
-      # -----------------------
       - name: Install dotnet format
         run: dotnet tool install -g dotnet-format
 
@@ -179,33 +196,26 @@ jobs:
       - name: Lint (dotnet format)
         run: dotnet format --verify-no-changes --verbosity minimal
 
-      # -----------------------
-      # Unit Tests
-      # -----------------------
       - name: Unit Tests (exclude OCR smoke)
         run: dotnet test ./DocumentManagementSystem.Tests/DocumentManagementSystem.Tests.csproj -c Release --no-build --verbosity normal --filter "Category!=OcrSmoke"
 
-      # -----------------------
-      # Wait for Postgres
-      # -----------------------
       - name: Install postgres client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Wait for Postgres
         run: |
+          set -euxo pipefail
           for i in {1..30}; do
-            pg_isready -h localhost -p 5433 -U "${{ secrets.CI_DB_USER }}" -d "${{ secrets.CI_DB_NAME }}" && exit 0
+            pg_isready -h localhost -p "$CI_DB_PORT" -U "$CI_DB_USER" -d "$CI_DB_NAME" && exit 0
             echo "Postgres not ready yet... ($i/30)"
             sleep 2
           done
           echo "Postgres did not become ready in time"
           exit 1
 
-      # -----------------------
-      # Wait for RabbitMQ
-      # -----------------------
       - name: Wait for RabbitMQ
         run: |
+          set -euxo pipefail
           for i in {1..30}; do
             curl --silent --fail http://localhost:15672 >/dev/null && exit 0
             echo "RabbitMQ not ready yet... ($i/30)"
@@ -214,17 +224,16 @@ jobs:
           echo "RabbitMQ did not become ready in time"
           exit 1
 
-      # -----------------------
-      # Integration Tests
-      # -----------------------
       - name: Integration Tests
         env:
-          ConnectionStrings__Default: Host=localhost;Port=5433;Database=${{ secrets.CI_DB_NAME }};Username=${{ secrets.CI_DB_USER }};Password=${{ secrets.CI_DB_PASSWORD }}
-          GarageS3__Endpoint: ${{ env.GARAGE_ENDPOINT }}
-          GarageS3__AccessKey: ${{ env.AWS_ACCESS_KEY_ID }}
-          GarageS3__SecretKey: ${{ env.AWS_SECRET_ACCESS_KEY }}
-          GarageS3__Bucket: ${{ env.GARAGE_BUCKET }}
+          ConnectionStrings__Default: Host=localhost;Port=${{ env.CI_DB_PORT }};Database=${{ env.CI_DB_NAME }};Username=${{ env.CI_DB_USER }};Password=${{ env.CI_DB_PASSWORD }}
+
+          GarageS3__Endpoint: ${{ env.CI_GARAGE_S3_ENDPOINT }}
+          GarageS3__AccessKey: ${{ env.CI_GARAGE_ACCESS_KEY }}
+          GarageS3__SecretKey: ${{ env.CI_GARAGE_SECRET_KEY }}
+          GarageS3__Bucket: ${{ env.CI_GARAGE_BUCKET }}
           GarageS3__Region: garage
+
           RABBIT_HOST: localhost
           RABBIT_USER: guest
           RABBIT_PASS: guest
