@@ -621,10 +621,3 @@ Das Projekt erfüllt alle Kriterien der Sprints 1 bis 7:
 3. Prüfe in der UI, ob die KI-Zusammenfassung erscheint.
 4. Suche nach dem Begriff "Hello", um die Elasticsearch-Indizierung zu bestätigen.
 5. Lege eine XML-Testdatei in den konfigurierten Batch-Ordner, um die Statistik-Aktualisierung zu triggern.
-
-
-
-- Containerisierung: Vereinfacht Setup, Testing und Deployment.
-- Moderne UI-Technologien: Schnelle Entwicklung, gutes Nutzererlebnis.
-- Interaktive, nutzerfreundliche OberflÃ¤che: Alle Kernfunktionen sind intuitiv erreichbar.
-- Asynchrone Verarbeitung (RabbitMQ): Grundlage fÃ¼r skalierbare AI- & OCR-Prozesse.
