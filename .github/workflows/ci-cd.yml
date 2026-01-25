@@ -15,9 +15,6 @@ env:
   DOTNET_VERSION: "8.0.x"
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository_owner }}/dms
-  GARAGE_S3_ENDPOINT: http://localhost:3900
-  GARAGE_BUCKET: ${{ secrets.CI_S3_BUCKET }}
-  GARAGE_KEY_NAME: ci-key
 
 jobs:
   build-and-test:
@@ -74,11 +71,14 @@ jobs:
             aws --version
           fi
 
+      # -----------------------
+      # Start Garage (S3) - Garage v2.1.0 (fixed)
+      # -----------------------
       - name: Start Garage (S3)
         env:
-          GARAGE_S3_ENDPOINT: ${{ env.GARAGE_S3_ENDPOINT }}
+          GARAGE_S3_ENDPOINT: http://localhost:3900
           GARAGE_BUCKET: ${{ secrets.CI_S3_BUCKET }}
-          GARAGE_KEY_NAME: ci-key
+          GARAGE_KEY_NAME: ${{ secrets.CI_S3_KEY_NAME }}  # Garage Key
         run: |
           set -euxo pipefail
 
@@ -135,6 +135,9 @@ jobs:
             sleep 1
           done
 
+          echo "--- garage status ---"
+          docker exec garage /garage status || true
+
           NODE_ID="$(docker exec garage /garage status | awk 'NR>1 && $1 ~ /^[0-9a-f]+$/ {print $1; exit}')"
           if [ -z "$NODE_ID" ]; then
             echo "Could not detect NODE_ID from /garage status"
@@ -142,18 +145,18 @@ jobs:
             docker logs garage --tail 300 || true
             exit 1
           fi
+          echo "NODE_ID=$NODE_ID"
 
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
 
-          if docker exec garage /garage layout apply --help | grep -q -- '--confirm'; then
-            docker exec garage /garage layout apply --version 1 --confirm
-          else
-            docker exec -i garage /garage layout apply --version 1 <<< "y"
-          fi
+          # IMPORTANT: v2.x requires version number
+          yes | docker exec -i garage /garage layout apply --version 1
 
           docker exec garage /garage layout show || true
 
           KEY_OUT="$(docker exec garage /garage key create "$GARAGE_KEY_NAME")"
+          echo "$KEY_OUT"
+
           ACCESS_KEY="$(printf "%s\n" "$KEY_OUT" | sed -n 's/^[[:space:]]*Key ID:[[:space:]]*//p' | head -n 1 | tr -d '\r')"
           SECRET_KEY="$(printf "%s\n" "$KEY_OUT" | sed -n 's/^[[:space:]]*Secret key:[[:space:]]*//p' | head -n 1 | tr -d '\r')"
 
@@ -165,11 +168,6 @@ jobs:
           docker exec garage /garage bucket create "$GARAGE_BUCKET" || true
           docker exec garage /garage bucket allow --read --write --owner "$GARAGE_BUCKET" --key "$GARAGE_KEY_NAME"
 
-          echo "--- garage key list ---"
-          docker exec garage /garage key list || true
-          echo "--- garage bucket list ---"
-          docker exec garage /garage bucket list || true
-
           {
             echo "GARAGE_S3_ENDPOINT=$GARAGE_S3_ENDPOINT"
             echo "GARAGE_BUCKET=$GARAGE_BUCKET"
@@ -178,10 +176,10 @@ jobs:
             echo "AWS_ACCESS_KEY_ID=$ACCESS_KEY"
             echo "AWS_SECRET_ACCESS_KEY=$SECRET_KEY"
             echo "AWS_DEFAULT_REGION=garage"
-            echo "AWS_EC2_METADATA_DISABLED=true"
-            echo "AWS_S3_FORCE_PATH_STYLE=true"
-            echo "AWS_ENABLE_ENDPOINT_DISCOVERY=false"
           } >> "$GITHUB_ENV"
+
+          aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls || true
+          aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls "s3://$GARAGE_BUCKET" || true
 
       - name: Install dotnet format
         run: dotnet tool install -g dotnet-format
@@ -226,14 +224,6 @@ jobs:
           GarageS3__SecretKey: ${{ env.GARAGE_SECRET_KEY }}
           GarageS3__Bucket: ${{ env.GARAGE_BUCKET }}
           GarageS3__Region: garage
-
-          AWS_ACCESS_KEY_ID: ${{ env.GARAGE_ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ env.GARAGE_SECRET_KEY }}
-          AWS_DEFAULT_REGION: garage
-          AWS_EC2_METADATA_DISABLED: "true"
-          AWS_S3_FORCE_PATH_STYLE: "true"
-          AWS_ENABLE_ENDPOINT_DISCOVERY: "false"
-
           RABBIT_HOST: localhost
           RABBIT_USER: guest
           RABBIT_PASS: guest
