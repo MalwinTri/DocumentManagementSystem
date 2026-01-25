@@ -192,6 +192,14 @@ jobs:
             echo "AWS_ENABLE_ENDPOINT_DISCOVERY=false"
           } >> "$GITHUB_ENV"
 
+          # IMPORTANT: make creds available IN THIS STEP for aws cli smoke test
+          export AWS_ACCESS_KEY_ID="$ACCESS_KEY"
+          export AWS_SECRET_ACCESS_KEY="$SECRET_KEY"
+          export AWS_DEFAULT_REGION="garage"
+          export AWS_EC2_METADATA_DISABLED="true"
+          export AWS_S3_FORCE_PATH_STYLE="true"
+          export AWS_ENABLE_ENDPOINT_DISCOVERY="false"
+
           # Smoke test with AWS CLI (PUT/GET)
           echo "hello" > /tmp/ci_garage_test.txt
           aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3api put-object \
