@@ -92,8 +92,7 @@ jobs:
           # - rpc_bind_addr and rpc_secret must be at ROOT level
           cat > .ci/garage/garage.toml <<TOML
           replication_factor = 1
-          # Remove or adjust this line to fit valid config if "strong" isn't valid.
-          # consistency_mode = "strong"  # <- This might be the issue, consider removing or changing it
+          consistency_mode = "strong"
 
           metadata_dir = "/var/lib/garage/meta"
           data_dir = "/var/lib/garage/data"
@@ -153,7 +152,17 @@ jobs:
           # Assign + apply layout (so node is not "NO ROLE ASSIGNED")
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
           yes | docker exec -i garage /garage layout apply
-          docker exec garage /garage layout show || true
+
+          # Get layout version number
+          LAYOUT_VERSION=$(docker exec garage /garage layout show | grep -Eo 'Version: [0-9]+' | awk '{print $2}')
+
+          if [ -z "$LAYOUT_VERSION" ]; then
+            echo "Could not detect layout version."
+            exit 1
+          fi
+
+          echo "Applying layout version $LAYOUT_VERSION"
+          docker exec -i garage /garage layout apply -v "$LAYOUT_VERSION"
 
           # Create keypair
           KEY_OUT="$(docker exec garage /garage key create "$GARAGE_KEY_NAME")"
