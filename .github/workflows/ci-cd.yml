@@ -26,6 +26,8 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.CI_S3_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.CI_S3_SECRET_KEY }}
       AWS_DEFAULT_REGION: ${{ secrets.CI_S3_REGION }}
+      CI_GARAGE_ENDPOINT: http://localhost:3900
+      CI_GARAGE_ADMIN: http://localhost:3903
 
     services:
       postgres:
@@ -37,15 +39,10 @@ jobs:
         ports:
           - 5433:5432
         options: >-
-          --health-cmd="pg_isready -U postgres -d dms"
+          --health-cmd="pg_isready -U ${{ secrets.CI_DB_USER }} -d ${{ secrets.CI_DB_NAME }}"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
-
-      garage:
-        image: dxflrs/garage:v2.1.0
-        ports:
-          - 3900:3900
 
       rabbitmq:
         image: rabbitmq:3-management
@@ -69,16 +66,69 @@ jobs:
         run: dotnet build -c Release --no-restore
 
       # -----------------------
-      # Install AWS CLI v2 (Ubuntu 24.04 compatible)
+      # AWS CLI v2 (NO-FAIL: only installs if missing)
       # -----------------------
-      - name: Install AWS CLI v2
+      - name: Ensure AWS CLI v2
         run: |
-          sudo apt-get update
-          sudo apt-get install -y unzip curl
-          curl -sS "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip -q awscliv2.zip
-          sudo ./aws/install
-          aws --version
+          set -euxo pipefail
+          if command -v aws >/dev/null 2>&1; then
+            aws --version
+          else
+            sudo apt-get update
+            sudo apt-get install -y unzip curl
+            curl -sS "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip -q awscliv2.zip
+            sudo ./aws/install
+            aws --version
+          fi
+
+      # -----------------------
+      # Start Garage with config + volumes (reliable in GitHub Actions)
+      # -----------------------
+      - name: Start Garage (S3)
+        run: |
+          set -euxo pipefail
+
+          mkdir -p .ci/garage/{meta,data}
+
+          cat > .ci/garage/garage.toml <<'TOML'
+          metadata_dir = "/var/lib/garage/meta"
+          data_dir = "/var/lib/garage/data"
+          db_engine = "lmdb"
+
+          replication_mode = "none"
+
+          [s3_api]
+          s3_region = "garage"
+          api_bind_addr = "0.0.0.0:3900"
+
+          [admin]
+          api_bind_addr = "0.0.0.0:3903"
+          TOML
+
+          docker run -d --name garage \
+            -p 3900:3900 -p 3903:3903 \
+            -v "$PWD/.ci/garage/garage.toml:/etc/garage.toml:ro" \
+            -v "$PWD/.ci/garage/meta:/var/lib/garage/meta" \
+            -v "$PWD/.ci/garage/data:/var/lib/garage/data" \
+            dxflrs/garage:v2.1.0 \
+            /garage server /etc/garage.toml
+
+          # Wait until admin health endpoint is ready
+          for i in {1..30}; do
+            curl -fsS "$CI_GARAGE_ADMIN/health" >/dev/null && break || true
+            echo "Waiting for Garage... ($i/30)"
+            sleep 2
+          done
+
+          docker logs garage --tail 200
+
+      - name: Create bucket in Garage
+        run: |
+          set -euxo pipefail
+          BUCKET="${{ secrets.CI_S3_BUCKET }}"
+          aws --endpoint-url "$CI_GARAGE_ENDPOINT" s3 mb "s3://$BUCKET" || true
+          aws --endpoint-url "$CI_GARAGE_ENDPOINT" s3 ls
 
       # -----------------------
       # LINTING (dotnet format)
@@ -99,7 +149,7 @@ jobs:
         run: dotnet test ./DocumentManagementSystem.Tests/DocumentManagementSystem.Tests.csproj -c Release --no-build --verbosity normal --filter "Category!=OcrSmoke"
 
       # -----------------------
-      # Wait for Postgres
+      # Install postgres client + Wait for Postgres
       # -----------------------
       - name: Install postgres client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
@@ -115,36 +165,12 @@ jobs:
           exit 1
 
       # -----------------------
-      # Debug Garage logs (hilft wenn Garage crasht)
-      # -----------------------
-      - name: Show Garage logs
-        if: always()
-        run: |
-          docker ps -a
-          docker logs "${{ job.services.garage.id }}" || true
-
-      # -----------------------
-      # Wait for Garage service (S3 check)
-      # -----------------------
-      - name: Wait for Garage service
-        run: |
-          echo "Using endpoint: http://garage:3900"
-          echo "AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION"
-          for i in {1..30}; do
-            echo "Attempt $i/30..."
-            aws --endpoint-url http://garage:3900 s3 ls --no-verify-ssl && exit 0
-            sleep 5
-          done
-          echo "Garage did not become ready in time"
-          exit 1
-
-      # -----------------------
-      # Wait for RabbitMQ (Management UI)
+      # Wait for RabbitMQ (Management UI) - use localhost in runner
       # -----------------------
       - name: Wait for RabbitMQ
         run: |
           for i in {1..30}; do
-            curl --silent --fail http://rabbitmq:15672 >/dev/null && exit 0
+            curl --silent --fail http://localhost:15672 >/dev/null && exit 0
             echo "RabbitMQ not ready yet... ($i/30)"
             sleep 2
           done
@@ -157,16 +183,25 @@ jobs:
       - name: Integration Tests
         env:
           ConnectionStrings__Default: Host=localhost;Port=5433;Database=${{ secrets.CI_DB_NAME }};Username=${{ secrets.CI_DB_USER }};Password=${{ secrets.CI_DB_PASSWORD }}
-          GarageS3__Endpoint: http://garage:3900
+          GarageS3__Endpoint: http://localhost:3900
           GarageS3__AccessKey: ${{ secrets.CI_S3_ACCESS_KEY }}
           GarageS3__SecretKey: ${{ secrets.CI_S3_SECRET_KEY }}
           GarageS3__Bucket: ${{ secrets.CI_S3_BUCKET }}
           GarageS3__Region: ${{ secrets.CI_S3_REGION }}
-          RABBIT_HOST: rabbitmq
+          RABBIT_HOST: localhost
           RABBIT_USER: guest
           RABBIT_PASS: guest
           RABBIT_QUEUE: ocr-queue
         run: dotnet test ./DocumentManagementSystem.IntegrationTests/DocumentManagementSystem.IntegrationTests.csproj -c Release --no-build --verbosity normal
+
+      # -----------------------
+      # Debug always
+      # -----------------------
+      - name: Debug containers (always)
+        if: always()
+        run: |
+          docker ps -a
+          docker logs garage --tail 200 || true
 
   docker-build-push:
     name: Docker Build & Push (master / CI_CD_Pipeline)
