@@ -77,14 +77,12 @@ jobs:
       - name: Start Garage (S3)
         env:
           GARAGE_S3_ENDPOINT: http://localhost:3900
-          GARAGE_RPC_ENDPOINT: http://localhost:3901
           GARAGE_ADMIN_ENDPOINT: http://localhost:3903
-          GARAGE_BUCKET: ci-bucket
+          GARAGE_BUCKET: ${{ secrets.CI_S3_BUCKET }}
           GARAGE_KEY_NAME: ci-key
         run: |
           set -euxo pipefail
 
-          # clean old container if exists
           docker rm -f garage >/dev/null 2>&1 || true
 
           mkdir -p .ci/garage/meta .ci/garage/data
@@ -114,13 +112,31 @@ jobs:
             -e GARAGE_CONFIG_FILE=/etc/garage.toml \
             dxflrs/garage:v2.1.0
 
-          # wait until garage responds
-          for i in {1..60}; do
-            if docker exec garage /garage status >/dev/null 2>&1; then
-              echo "Garage is up."
+          # Wait until container is running and admin api is reachable
+          for i in {1..90}; do
+            if ! docker ps --format '{{.Names}}' | grep -qx garage; then
+              echo "Garage container is not running (crashed/exited). Logs:"
+              docker logs garage --tail 300 || true
+              exit 1
+            fi
+
+            if curl -fsS "$GARAGE_ADMIN_ENDPOINT/health" >/dev/null 2>&1; then
+              echo "Garage admin health OK."
               break
             fi
-            echo "Waiting for Garage... ($i/60)"
+
+            echo "Waiting for Garage admin /health... ($i/90)"
+            docker logs garage --tail 20 || true
+            sleep 2
+          done
+
+          # Ensure S3 port responds too
+          for i in {1..60}; do
+            if curl -fsS "$GARAGE_S3_ENDPOINT/" >/dev/null 2>&1; then
+              echo "Garage S3 endpoint reachable."
+              break
+            fi
+            echo "Waiting for Garage S3... ($i/60)"
             sleep 2
           done
 
@@ -129,22 +145,23 @@ jobs:
           echo "--- garage logs (tail) ---"
           docker logs garage --tail 200 || true
 
-          # extract node id
           NODE_ID="$(docker exec garage /garage status | grep -Eo '[a-f0-9]{8,}' | head -n 1 || true)"
           if [ -z "$NODE_ID" ]; then
             echo "Could not detect NODE_ID from /garage status"
+            docker exec garage /garage status || true
+            docker logs garage --tail 300 || true
             exit 1
           fi
           echo "NODE_ID=$NODE_ID"
 
-          # assign + apply layout so the node is not "NO ROLE ASSIGNED"
+          # Assign a role so S3 works
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
           yes | docker exec -i garage /garage layout apply
 
           echo "--- garage layout ---"
           docker exec garage /garage layout show || true
 
-          # create key (gives Key ID + Secret key)
+          # Create a keypair
           KEY_OUT="$(docker exec garage /garage key create "$GARAGE_KEY_NAME")"
           echo "$KEY_OUT"
 
@@ -152,15 +169,15 @@ jobs:
           SECRET_KEY="$(echo "$KEY_OUT" | awk -F': ' '/Secret key:/ {print $2}' | tr -d '\r')"
 
           if [ -z "$ACCESS_KEY" ] || [ -z "$SECRET_KEY" ]; then
-            echo "Failed to parse access/secret key from output."
+            echo "Failed to parse Key ID / Secret key."
             exit 1
           fi
 
-          # create bucket + allow access
+          # Bucket + permissions
           docker exec garage /garage bucket create "$GARAGE_BUCKET" || true
           docker exec garage /garage bucket allow --read --write --owner "$GARAGE_BUCKET" --key "$GARAGE_KEY_NAME"
 
-          # export env for later steps
+          # Export env for later steps (aws cli + tests)
           {
             echo "GARAGE_S3_ENDPOINT=$GARAGE_S3_ENDPOINT"
             echo "GARAGE_BUCKET=$GARAGE_BUCKET"
@@ -171,12 +188,9 @@ jobs:
             echo "AWS_DEFAULT_REGION=garage"
           } >> "$GITHUB_ENV"
 
-          # quick s3 check
           aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls || true
+          aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls "s3://$GARAGE_BUCKET" || true
 
-      # -----------------------
-      # Lint
-      # -----------------------
       - name: Install dotnet format
         run: dotnet tool install -g dotnet-format
 
@@ -186,15 +200,9 @@ jobs:
       - name: Lint (dotnet format)
         run: dotnet format --verify-no-changes --verbosity minimal
 
-      # -----------------------
-      # Unit Tests
-      # -----------------------
       - name: Unit Tests (exclude OCR smoke)
         run: dotnet test ./DocumentManagementSystem.Tests/DocumentManagementSystem.Tests.csproj -c Release --no-build --verbosity normal --filter "Category!=OcrSmoke"
 
-      # -----------------------
-      # Wait for Postgres
-      # -----------------------
       - name: Install postgres client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
@@ -208,9 +216,6 @@ jobs:
           echo "Postgres did not become ready in time"
           exit 1
 
-      # -----------------------
-      # Wait for RabbitMQ
-      # -----------------------
       - name: Wait for RabbitMQ
         run: |
           for i in {1..30}; do
@@ -221,9 +226,6 @@ jobs:
           echo "RabbitMQ did not become ready in time"
           exit 1
 
-      # -----------------------
-      # Integration Tests
-      # -----------------------
       - name: Integration Tests
         env:
           ConnectionStrings__Default: Host=localhost;Port=5433;Database=${{ secrets.CI_DB_NAME }};Username=${{ secrets.CI_DB_USER }};Password=${{ secrets.CI_DB_PASSWORD }}
