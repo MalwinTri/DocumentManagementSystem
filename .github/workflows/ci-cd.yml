@@ -82,7 +82,7 @@ jobs:
         run: |
           set -euxo pipefail
 
-          mkdir -p .ci/garage/meta .ci/garage/data
+          mkdir -p .ci/garage/{meta,data}
 
           cat > .ci/garage/garage.toml <<'TOML'
           metadata_dir = "/var/lib/garage/meta"
@@ -99,11 +99,9 @@ jobs:
           api_bind_addr = "0.0.0.0:3903"
           TOML
 
-          docker rm -f garage >/dev/null 2>&1 || true
-
+          docker rm -f garage || true
           docker run -d --name garage \
             -p 3900:3900 -p 3903:3903 \
-            -e GARAGE_CONFIG_FILE=/etc/garage.toml \
             -v "$PWD/.ci/garage/garage.toml:/etc/garage.toml:ro" \
             -v "$PWD/.ci/garage/meta:/var/lib/garage/meta" \
             -v "$PWD/.ci/garage/data:/var/lib/garage/data" \
@@ -112,15 +110,10 @@ jobs:
             server
 
           for i in {1..60}; do
-            if curl -fsS "$CI_GARAGE_ADMIN/health" >/dev/null; then
-              echo "Garage is healthy."
-              break
-            fi
+            curl -fsS "$CI_GARAGE_ADMIN/health" >/dev/null && break || true
             echo "Waiting for Garage... ($i/60)"
             sleep 2
           done
-
-          docker logs garage --tail 200
 
       - name: Create bucket in Garage
         run: |
