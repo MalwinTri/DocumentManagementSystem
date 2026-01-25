@@ -21,7 +21,6 @@ jobs:
     name: Build, Lint & Test
     runs-on: ubuntu-latest
 
-    # AWS-Creds job-weit setzen (für aws s3 ls gegen Garage)
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.CI_S3_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.CI_S3_SECRET_KEY }}
@@ -39,7 +38,7 @@ jobs:
         ports:
           - 5433:5432
         options: >-
-          --health-cmd="pg_isready -U ${{ secrets.CI_DB_USER }} -d ${{ secrets.CI_DB_NAME }}"
+          --health-cmd="pg_isready -U postgres -d postgres"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
@@ -65,9 +64,6 @@ jobs:
       - name: Build
         run: dotnet build -c Release --no-restore
 
-      # -----------------------
-      # AWS CLI v2 (NO-FAIL: only installs if missing)
-      # -----------------------
       - name: Ensure AWS CLI v2
         run: |
           set -euxo pipefail
@@ -82,9 +78,6 @@ jobs:
             aws --version
           fi
 
-      # -----------------------
-      # Start Garage with config + volumes (reliable in GitHub Actions)
-      # -----------------------
       - name: Start Garage (S3)
         run: |
           set -euxo pipefail
@@ -114,7 +107,6 @@ jobs:
             dxflrs/garage:v2.1.0 \
             /garage server /etc/garage.toml
 
-          # Wait until admin health endpoint is ready
           for i in {1..30}; do
             curl -fsS "$CI_GARAGE_ADMIN/health" >/dev/null && break || true
             echo "Waiting for Garage... ($i/30)"
@@ -130,9 +122,6 @@ jobs:
           aws --endpoint-url "$CI_GARAGE_ENDPOINT" s3 mb "s3://$BUCKET" || true
           aws --endpoint-url "$CI_GARAGE_ENDPOINT" s3 ls
 
-      # -----------------------
-      # LINTING (dotnet format)
-      # -----------------------
       - name: Install dotnet format
         run: dotnet tool install -g dotnet-format
 
@@ -142,15 +131,9 @@ jobs:
       - name: Lint (dotnet format)
         run: dotnet format --verify-no-changes --verbosity minimal
 
-      # -----------------------
-      # Unit Tests (exclude OCR smoke)
-      # -----------------------
       - name: Unit Tests (exclude OCR smoke)
         run: dotnet test ./DocumentManagementSystem.Tests/DocumentManagementSystem.Tests.csproj -c Release --no-build --verbosity normal --filter "Category!=OcrSmoke"
 
-      # -----------------------
-      # Install postgres client + Wait for Postgres
-      # -----------------------
       - name: Install postgres client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
@@ -164,9 +147,6 @@ jobs:
           echo "Postgres did not become ready in time"
           exit 1
 
-      # -----------------------
-      # Wait for RabbitMQ (Management UI) - use localhost in runner
-      # -----------------------
       - name: Wait for RabbitMQ
         run: |
           for i in {1..30}; do
@@ -177,9 +157,6 @@ jobs:
           echo "RabbitMQ did not become ready in time"
           exit 1
 
-      # -----------------------
-      # Integration Tests
-      # -----------------------
       - name: Integration Tests
         env:
           ConnectionStrings__Default: Host=localhost;Port=5433;Database=${{ secrets.CI_DB_NAME }};Username=${{ secrets.CI_DB_USER }};Password=${{ secrets.CI_DB_PASSWORD }}
@@ -194,9 +171,6 @@ jobs:
           RABBIT_QUEUE: ocr-queue
         run: dotnet test ./DocumentManagementSystem.IntegrationTests/DocumentManagementSystem.IntegrationTests.csproj -c Release --no-build --verbosity normal
 
-      # -----------------------
-      # Debug always
-      # -----------------------
       - name: Debug containers (always)
         if: always()
         run: |
