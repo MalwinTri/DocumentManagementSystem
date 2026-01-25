@@ -31,7 +31,7 @@ jobs:
         ports:
           - 5433:5432
         options: >-
-          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-cmd="pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
@@ -72,7 +72,7 @@ jobs:
           fi
 
       # -----------------------
-      # Start Garage (S3) - fixed for v2.1.0 (rpc_secret required)
+      # Start Garage (S3) - Garage v2.1.0 (fixed)
       # -----------------------
       - name: Start Garage (S3)
         env:
@@ -85,28 +85,29 @@ jobs:
           docker rm -f garage >/dev/null 2>&1 || true
           mkdir -p .ci/garage/meta .ci/garage/data
 
-          # Generate required RPC secret for Garage v2.1.0
           RPC_SECRET="$(openssl rand -hex 32)"
+          ADMIN_TOKEN="$(openssl rand -base64 32)"
+          METRICS_TOKEN="$(openssl rand -base64 32)"
 
-          # IMPORTANT for Garage v2.1.0:
-          # - rpc_bind_addr and rpc_secret must be at ROOT level
           cat > .ci/garage/garage.toml <<TOML
-          replication_factor = 1
-          consistency_mode = "eventual"  # Use "auto" or "eventual" or remove it completely
-
           metadata_dir = "/var/lib/garage/meta"
           data_dir = "/var/lib/garage/data"
-          rpc_secret = "${RPC_SECRET}"
+          db_engine = "lmdb"
+
+          replication_factor = 1
+
           rpc_bind_addr = "[::]:3901"
-          api_key = "garage-access-key"
-          api_secret = "garage-secret-key"
+          rpc_public_addr = "127.0.0.1:3901"
+          rpc_secret = "${RPC_SECRET}"
 
           [s3_api]
-          api_bind_addr = "[::]:3900"
           s3_region = "garage"
+          api_bind_addr = "[::]:3900"
 
           [admin]
-          api_bind_addr = "0.0.0.0:3903"
+          api_bind_addr = "[::]:3903"
+          admin_token = "${ADMIN_TOKEN}"
+          metrics_token = "${METRICS_TOKEN}"
           TOML
 
           docker run -d --name garage \
@@ -117,7 +118,6 @@ jobs:
             -e GARAGE_CONFIG_FILE=/etc/garage.toml \
             dxflrs/garage:v2.1.0
 
-          # Wait until /garage status works
           for i in {1..120}; do
             if ! docker ps --format '{{.Names}}' | grep -qx garage; then
               echo "Garage container exited/crashed. Logs:"
@@ -137,10 +137,8 @@ jobs:
 
           echo "--- garage status ---"
           docker exec garage /garage status || true
-          echo "--- garage logs (tail) ---"
-          docker logs garage --tail 200 || true
 
-          NODE_ID="$(docker exec garage /garage status | grep -Eo '[a-f0-9]{8,}' | head -n 1 || true)"
+          NODE_ID="$(docker exec garage /garage status | awk 'NR>1 && $1 ~ /^[0-9a-f]+$/ {print $1; exit}')"
           if [ -z "$NODE_ID" ]; then
             echo "Could not detect NODE_ID from /garage status"
             docker exec garage /garage status || true
@@ -149,22 +147,13 @@ jobs:
           fi
           echo "NODE_ID=$NODE_ID"
 
-          # Assign + apply layout (so node is not "NO ROLE ASSIGNED")
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
-          yes | docker exec -i garage /garage layout apply
 
-          # Get layout version number
-          LAYOUT_VERSION=$(docker exec garage /garage layout show | grep -Eo 'Version: [0-9]+' | awk '{print $2}')
+          # IMPORTANT: v2.x requires version number
+          yes | docker exec -i garage /garage layout apply --version 1
 
-          if [ -z "$LAYOUT_VERSION" ]; then
-            echo "Could not detect layout version."
-            exit 1
-          fi
+          docker exec garage /garage layout show || true
 
-          echo "Applying layout version $LAYOUT_VERSION"
-          docker exec -i garage /garage layout apply -v "$LAYOUT_VERSION"
-
-          # Create keypair
           KEY_OUT="$(docker exec garage /garage key create "$GARAGE_KEY_NAME")"
           echo "$KEY_OUT"
 
@@ -176,11 +165,9 @@ jobs:
             exit 1
           fi
 
-          # Bucket + permissions
           docker exec garage /garage bucket create "$GARAGE_BUCKET" || true
           docker exec garage /garage bucket allow --read --write --owner "$GARAGE_BUCKET" --key "$GARAGE_KEY_NAME"
 
-          # Export env for later steps
           {
             echo "GARAGE_S3_ENDPOINT=$GARAGE_S3_ENDPOINT"
             echo "GARAGE_BUCKET=$GARAGE_BUCKET"
@@ -191,7 +178,6 @@ jobs:
             echo "AWS_DEFAULT_REGION=garage"
           } >> "$GITHUB_ENV"
 
-          # Sanity checks
           aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls || true
           aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls "s3://$GARAGE_BUCKET" || true
 
