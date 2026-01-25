@@ -281,11 +281,6 @@ public interface IOcrEngine
 - **Elasticsearch**: Indexierung des OCR‑Textes & Such‑Use‑Case (Sprint 6)
 - **Integrationstests & Batch**: End‑to‑End Test, XML‑Batch für Zugriffsstatistiken (Sprint 7)
 
-
----
-## Kurzfazit
-Sprint 4 ist vollständig umgesetzt: **Upload → Queue → OCR → Text zurück in S3** mit robuster Konfiguration, austauschbaren OCR‑Engines, sinnvoller Fehlerbehandlung (Ack/Nack/DLQ) und nachvollziehbaren Logs. Diese Grundlage ist stabil für die nächsten Sprints (Gen‑AI & Suche).
-
 ---
 
 ## Sprint 5: Generative AI-Integration
@@ -445,138 +440,6 @@ Konfiguration erfolgt über `appsettings.json` (ohne Secrets) und Umgebungsvaria
   "Model": "models/gemini-2.5-flash"
 }
 ```
-
----
-
-## Erweiterungsidee
-
-Automatisches Tagging mit GemAI
-â†’ Nach OCR und Textanalyse werden Dokumente automatisch mit thematischen Tags versehen (z. B. â€žRechnungâ€œ, â€žVertragâ€œ, â€žPersonalakteâ€œ).
-
----
-
-### Architektur
-
-```mermaid
-flowchart LR
-    UI[React UI<br/>DocumentManagementSystem.UI]
-    API[REST API<br/>DocumentManagementSystem.API]
-    DB[(PostgreSQL)]
-    S3[(Garage S3)]
-    MQ[(RabbitMQ)]
-    OCR[OCR Worker]
-    GENAI[GenAI Worker<br/>Google Gemini Integration]
-    GEMINI[(Google Gemini API)]
-
-    UI --> API
-    API --> DB
-    API --> S3
-    API --> MQ
-
-    MQ --> OCR
-    OCR --> S3
-    OCR --> DB
-
-    GENAI --> DB
-    GENAI --> GEMINI
-    GEMINI --> GENAI
-
-```
-
-```mermaid
-sequenceDiagram
-    participant UI as Web UI
-    participant API as REST API
-    participant MQ as RabbitMQ
-    participant S3 as Garage S3
-    participant OCR as OCR Worker
-    participant DB as PostgreSQL
-    participant GA as GenAI Worker
-    participant Gemini as Google Gemini
-
-    UI->>API: Upload Document
-    API->>S3: Store File
-    API->>DB: Insert Document Metadata
-    API->>MQ: Publish OCR Job
-
-    MQ->>OCR: Deliver Job
-    OCR->>S3: Download Document
-    OCR->>OCR: Perform OCR
-    OCR->>DB: Save Extracted Text (ocr_text)
-    OCR->>DB: Mark OCR_Completed = true
-
-    GA->>DB: Query documents WHERE summary is null AND ocr_text is not null
-    DB-->>GA: Return next document
-
-    GA->>Gemini: Send OCR Text
-    Gemini-->>GA: Return AI Summary
-
-    GA->>DB: Save Summary (summary field)
-
-    UI->>API: Request document details
-    API->>DB: Fetch including Summary
-    DB-->>API: Return full document DTO
-    API-->>UI: Display Summary
-```
-
-### Komponenten
-
-#### **DocumentManagementSystem.API**
-- ASP.NET Core REST API  
-- Funktionen:
-  - Dokument-Upload
-  - Auflisten von Dokumenten
-  - Aktualisieren von Metadaten (Titel, Tags, Summary)
-  - Bulk-Löschen
-- Summary wird im Document-DTO ausgegeben.
-
-#### **OCR_Worker**
-- Konsumiert Nachrichten aus RabbitMQ (`ocr-queue`)
-- Lädt Dokumente aus Garage (S3)
-- Führt OCR auf PDF/PNG/JPG durch
-- Speichert extrahierten Text in der Datenbank
-- Markiert Dokumente als *OCR abgeschlossen*
-
-#### **GenAI_Worker (`DocumentManagementSystem.GenAI_Worker`)**
-- **Neuer Worker in Sprint 5**
-- Periodisches Polling der Datenbank:
-  - Dokumente mit OCR-Text  
-  - aber ohne Summary
-- Sendet den Text an **Google Gemini**
-- Speichert die generierte Zusammenfassung in der Datenbank
-
-#### **UI – React / Vite / Tailwind**
-- Neues Panel für **„AI Summary“**
-- Editierbare Felder für:
-  - Titel  
-  - Tags  
-  - AI-Zusammenfassung  
-- Unterstützt Bulk-Aktionen wie Sammellöschen
-
-#### **Infrastruktur**
-- PostgreSQL  
-- RabbitMQ  
-- Garage (S3-kompatibel)  
-- Docker Compose für Orchestrierung
-
----
-
-### GenAI-Integration / Google Gemini
-
-### Konfiguration
-
-Konfiguration erfolgt über `appsettings.json` (ohne Secrets) und Umgebungsvariablen.
-
-#### `appsettings.json` (Auszug)
-
-```json
-"Gemini": {
-  "ApiKey": "",
-  "BaseUrl": "https://generativelanguage.googleapis.com/v1beta",
-  "Model": "models/gemini-2.5-flash"
-}
-```
-
 ---
 # Sprint 6 -  ELK, Use Cases
  
@@ -704,3 +567,60 @@ Für jedes Dokument wird ein Embedding erstellt und in **`DocumentEmbedding`** g
 Damit ist euer Unique Feature direkt sichtbar in der API Response.
 
 ---
+## Sprint 7: Integrationstests & Batch-Processing
+
+In der finalen Phase wurde das System um automatisierte Qualitätskontrollen und eine Schnittstelle für externe Statistikdaten erweitert.
+
+### 1. Integration-Tests (End-to-End)
+Um die korrekte Funktion der gesamten Kette sicherzustellen, wurde ein Integration-Test für den Use-Case **"Document Upload"** implementiert.
+
+* **Test-Ablauf**: 
+    1.  Simulation eines Datei-Uploads über die REST-API.
+    2.  Validierung der Persistenz in der **PostgreSQL** Datenbank.
+    3.  Prüfung der Speicherung im **Garage S3** Object Store.
+    4.  Verifizierung, dass eine Nachricht an die **RabbitMQ** Queue gesendet wurde.
+* **Ausführung**:
+    ```bash
+    dotnet test DocumentManagementSystem.Tests
+    ```
+
+### 2. Batch-Processing Service (Daily Access Logs)
+Ein neuer, zeitgesteuerter Dienst wurde integriert, um Zugriffszahlen aus externen Systemen via XML-Dateien zu importieren.
+
+* **Funktionsweise**:
+    * Der Dienst scannt ein konfigurierbares Eingangsverzeichnis nach neuen XML-Dateien.
+    * Extraktion der Zugriffsdaten pro Dokument-ID.
+    * Aktualisierung der `DailyAccessCount` in der PostgreSQL Datenbank.
+    * Erfolgreich verarbeitete Dateien werden in einen Archiv-Ordner verschoben, um doppelte Verarbeitungen zu verhindern.
+* **Zeitsteuerung**: Der Prozess ist standardmäßig so konfiguriert, dass er täglich um **01:00 Uhr** ausgeführt wird.
+
+#### Beispiel für das XML-Format (`access_log.xml`):
+```xml
+<AccessStatistics date="2026-01-25">
+    <Entry>
+        <DocumentId>550e8400-e29b-41d4-a716-446655440000</DocumentId>
+        <AccessCount>42</AccessCount>
+    </Entry>
+    <Entry>
+        <DocumentId>6ba7b810-9dad-11d1-80b4-00c04fd430c8</DocumentId>
+        <AccessCount>15</AccessCount>
+    </Entry>
+</AccessStatistics>
+```
+--- 
+### Finalisierung & Code-Review Vorbereitung
+
+Das Projekt erfüllt alle Kriterien der Sprints 1 bis 7:
+* Unit Tests & Coverage: Abdeckung der Business-Logik und Worker-Dienste (> 70%).
+* Logging & Error Handling: Durchgängige Implementierung von Layer-spezifischen Exceptions und strukturiertem Logging.
+* Containerisierung: Alle Dienste (API, UI, OCR-Worker, GenAI-Worker, Elasticsearch, RabbitMQ, DB, Garage) sind in der `docker-compose.yml` orchestriert.
+
+### HOWTO: System-Validierung
+1. Starte das System via `docker compose up -d`.
+2. Lade eine PDF-Datei (`HelloWorld.pdf`) über das Frontend hoch.
+3. Prüfe in der UI, ob die KI-Zusammenfassung erscheint.
+4. Suche nach dem Begriff "Hello", um die Elasticsearch-Indizierung zu bestätigen.
+5. Lege eine XML-Testdatei in den konfigurierten Batch-Ordner, um die Statistik-Aktualisierung zu triggern.
+
+
+
