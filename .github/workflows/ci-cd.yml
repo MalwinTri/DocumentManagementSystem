@@ -84,17 +84,19 @@ jobs:
 
           # Cleanup from previous attempts (safe)
           docker rm -f garage >/dev/null 2>&1 || true
-
           mkdir -p .ci/garage/meta .ci/garage/data
 
+          # IMPORTANT for Garage v2.1.0:
+          # rpc_bind_addr must be at ROOT (not inside [rpc])
           cat > .ci/garage/garage.toml <<'TOML'
           metadata_dir = "/var/lib/garage/meta"
           data_dir = "/var/lib/garage/data"
           db_engine = "lmdb"
           replication_mode = "none"
 
-          [rpc]
+          # Garage v2.1.0 expects these at root-level
           rpc_bind_addr = "0.0.0.0:3901"
+          rpc_public_addr = "127.0.0.1:3901"
 
           [s3_api]
           s3_region = "garage"
@@ -112,8 +114,8 @@ jobs:
             -e GARAGE_CONFIG_FILE=/etc/garage.toml \
             dxflrs/garage:v2.1.0
 
-          # Wait until /garage status works (this is the reliable readiness check)
-          for i in {1..90}; do
+          # Wait until /garage status works
+          for i in {1..120}; do
             if ! docker ps --format '{{.Names}}' | grep -qx garage; then
               echo "Garage container exited/crashed. Logs:"
               docker logs garage --tail 300 || true
@@ -125,15 +127,15 @@ jobs:
               break
             fi
 
-            echo "Waiting for Garage... ($i/90)"
+            echo "Waiting for Garage... ($i/120)"
             docker logs garage --tail 50 || true
-            sleep 2
+            sleep 1
           done
 
           echo "--- garage status ---"
           docker exec garage /garage status
 
-          # Extract node id from status output (first long hex id)
+          # Extract node id
           NODE_ID="$(docker exec garage /garage status | grep -Eo '[a-f0-9]{8,}' | head -n 1 || true)"
           if [ -z "$NODE_ID" ]; then
             echo "Could not detect NODE_ID from /garage status"
@@ -143,26 +145,24 @@ jobs:
           fi
           echo "NODE_ID=$NODE_ID"
 
-          # Assign + apply layout so node is not "NO ROLE ASSIGNED"
+          # Assign + apply layout
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
           yes | docker exec -i garage /garage layout apply
-
-          echo "--- garage layout ---"
           docker exec garage /garage layout show || true
 
           # Create keypair (Key ID + Secret key)
           KEY_OUT="$(docker exec garage /garage key create "$GARAGE_KEY_NAME")"
           echo "$KEY_OUT"
 
-          ACCESS_KEY="$(echo "$KEY_OUT" | awk -F': ' '/Key ID:/ {print $2}' | tr -d '\r')"
-          SECRET_KEY="$(echo "$KEY_OUT" | awk -F': ' '/Secret key:/ {print $2}' | tr -d '\r')"
+          ACCESS_KEY="$(printf "%s\n" "$KEY_OUT" | sed -n 's/^[[:space:]]*Key ID:[[:space:]]*//p' | head -n 1 | tr -d '\r')"
+          SECRET_KEY="$(printf "%s\n" "$KEY_OUT" | sed -n 's/^[[:space:]]*Secret key:[[:space:]]*//p' | head -n 1 | tr -d '\r')"
 
           if [ -z "$ACCESS_KEY" ] || [ -z "$SECRET_KEY" ]; then
             echo "Failed to parse Key ID / Secret key."
             exit 1
           fi
 
-          # Create bucket + allow rw
+          # Bucket + permissions
           docker exec garage /garage bucket create "$GARAGE_BUCKET" || true
           docker exec garage /garage bucket allow --read --write --owner "$GARAGE_BUCKET" --key "$GARAGE_KEY_NAME"
 
