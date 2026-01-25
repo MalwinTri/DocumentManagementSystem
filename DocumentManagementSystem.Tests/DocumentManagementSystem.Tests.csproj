@@ -14,6 +14,7 @@
 		</PackageReference>
 		<PackageReference Include="FluentAssertions" Version="8.8.0" />
 		<PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.9.1" />
+		<PackageReference Include="Microsoft.Graph" Version="5.101.0" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
 		<PackageReference Include="Moq" Version="4.20.72" />
 		<PackageReference Include="QuestPDF" Version="2025.7.4" />
@@ -27,6 +28,7 @@
 	<ItemGroup>
 		<!-- Pfad passt, wenn Tests und API Projekt Geschwister sind -->
 		<ProjectReference Include="..\DocumentManagementSystem\DocumentManagementSystem.csproj" />
+		<ProjectReference Include="..\OCR_Worker\DocumentManagementSystem.OCR_Worker.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
