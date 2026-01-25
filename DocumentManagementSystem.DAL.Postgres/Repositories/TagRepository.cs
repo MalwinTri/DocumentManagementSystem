@@ -1,4 +1,4 @@
-using DocumentManagementSystem.DAL;
+﻿using DocumentManagementSystem.DAL;
 using DocumentManagementSystem.Exceptions;
 using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
@@ -99,3 +99,4 @@ public class TagRepository(DmsDbContext db, ILogger<TagRepository> logger) : ITa
         return s;
     }
 }
+

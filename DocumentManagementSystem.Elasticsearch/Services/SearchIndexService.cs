@@ -53,3 +53,4 @@ public class SearchIndexService : ISearchIndexService
             $"Failed to index document {document.Id} after {maxAttempts} attempts (Elasticsearch not reachable).");
     }
 }
+

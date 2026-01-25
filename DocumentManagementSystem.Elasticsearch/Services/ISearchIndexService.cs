@@ -6,3 +6,4 @@ public interface ISearchIndexService
 {
     Task IndexDocumentAsync(DocumentIndex document, CancellationToken ct = default);
 }
+

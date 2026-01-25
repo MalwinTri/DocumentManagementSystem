@@ -46,10 +46,10 @@ namespace DocumentManagementSystem.IntegrationTests
                 0x0A, 0x0A, 0x25, 0x25, 0x45, 0x4F, 0x46  // "%%EOF"
             };
 
-            // ÃœberprÃ¼fen, ob die Datei eine gÃ¼ltige PDF ist
+            // Überprüfen, ob die Datei eine gültige PDF ist
             if (!IsValidPdf(pdfBytes))
             {
-                throw new InvalidDataException("Die Datei ist keine gÃ¼ltige PDF.");
+                throw new InvalidDataException("Die Datei ist keine gültige PDF.");
             }
 
             using var content = new MultipartFormDataContent();
@@ -74,7 +74,7 @@ namespace DocumentManagementSystem.IntegrationTests
                 var responseContent = await uploadResp.Content.ReadAsStringAsync();
                 Console.WriteLine($"Response Content: {responseContent}");
 
-                // PrÃ¼fen, ob das Dokument erfolgreich hochgeladen wurde
+                // Prüfen, ob das Dokument erfolgreich hochgeladen wurde
                 uploadResp.StatusCode.Should().Be(HttpStatusCode.Created);
 
                 var uploadJson = await uploadResp.Content.ReadAsStringAsync();
@@ -104,8 +104,8 @@ namespace DocumentManagementSystem.IntegrationTests
                 getRoot.GetProperty("title").GetString().Should().Be("Integration Test Document");
                 getRoot.GetProperty("description").GetString().Should().Be("Beschreibung des Testdokuments");
 
-                // PrÃ¼fung der Tags
-                getRoot.GetProperty("tags").EnumerateArray().Count().Should().Be(2); // Tags zÃ¤hlen
+                // Prüfung der Tags
+                getRoot.GetProperty("tags").EnumerateArray().Count().Should().Be(2); // Tags zählen
             }
             catch (Exception ex)
             {

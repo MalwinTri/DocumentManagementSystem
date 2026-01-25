@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.Exceptions;
+﻿namespace DocumentManagementSystem.Exceptions;
 
 public sealed class UniqueConstraintViolationException : AppException
 {
@@ -21,3 +21,4 @@ public sealed class UniqueConstraintViolationException : AppException
         Entity = entity;
     }
 }
+

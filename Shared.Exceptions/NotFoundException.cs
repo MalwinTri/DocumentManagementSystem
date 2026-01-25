@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.Exceptions;
+﻿namespace DocumentManagementSystem.Exceptions;
 
 public sealed class NotFoundException : AppException
 {
@@ -21,3 +21,4 @@ public sealed class NotFoundException : AppException
     public static NotFoundException For<T>(object? id, string? detail = null, Exception? inner = null)
         => new(resource: typeof(T).Name, resourceId: id, detail: detail, inner: inner);
 }
+

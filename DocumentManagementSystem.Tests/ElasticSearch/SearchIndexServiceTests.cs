@@ -1,4 +1,4 @@
-using DocumentManagementSystem.Elasticsearch.Models;
+﻿using DocumentManagementSystem.Elasticsearch.Models;
 using DocumentManagementSystem.Elasticsearch.Services;
 using Elastic.Clients.Elasticsearch;
 using FluentAssertions;
@@ -58,3 +58,4 @@ public class SearchIndexServiceTests
              e.Message.Contains("Failed to index document", StringComparison.OrdinalIgnoreCase)));
     }
 }
+

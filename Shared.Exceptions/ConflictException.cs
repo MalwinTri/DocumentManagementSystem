@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.Exceptions;
+﻿namespace DocumentManagementSystem.Exceptions;
 
 public sealed class ConflictException : AppException
 {
@@ -23,3 +23,4 @@ public sealed class ConflictException : AppException
         ResourceId = resourceId;
     }
 }
+

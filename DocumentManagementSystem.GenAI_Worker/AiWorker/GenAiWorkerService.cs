@@ -1,4 +1,4 @@
-using DocumentManagementSystem.Database;
+﻿using DocumentManagementSystem.Database;
 using DocumentManagementSystem.Elasticsearch.Models;
 using DocumentManagementSystem.Elasticsearch.Services;
 using DocumentManagementSystem.Infrastructure.Exceptions;
@@ -51,7 +51,7 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
                 try
                 {
                     doc = await _dbContext.Documents
-                        .AsSplitQuery() // EF Warning "MultipleCollectionInclude" entschärfen
+                        .AsSplitQuery() // EF Warning "MultipleCollectionInclude" entschÃ¤rfen
                         .Include(d => d.Tags)
                         .Include(d => d.Metadata)
                         .Include(d => d.ExtractedEntities)
@@ -242,7 +242,7 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
                         }
                     }
 
-                    // Wenn alles fertig ist -> AiProcessedAt setzen + Reservation löschen
+                    // Wenn alles fertig ist -> AiProcessedAt setzen + Reservation lÃ¶schen
                     if (doc.Summary != null && doc.Metadata != null && doc.Embedding != null && doc.AiProcessedAt == null)
                     {
                         doc.AiProcessedAt = DateTime.UtcNow;
@@ -351,3 +351,4 @@ namespace DocumentManagementSystem.GenAI_Worker.AiWorker
             string.IsNullOrWhiteSpace(s) ? null : s.Trim();
     }
 }
+

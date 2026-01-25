@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using DocumentManagementSystem.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -37,3 +37,4 @@ namespace DocumentManagementSystem.Tests.Rabbit
         }
     }
 }
+

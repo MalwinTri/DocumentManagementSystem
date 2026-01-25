@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.Infrastructure.Exceptions
+﻿namespace DocumentManagementSystem.Infrastructure.Exceptions
 {
     public sealed class FileStorageException : Exception
     {
@@ -7,3 +7,4 @@ namespace DocumentManagementSystem.Infrastructure.Exceptions
             : base(message, inner) => Code = code;
     }
 }
+

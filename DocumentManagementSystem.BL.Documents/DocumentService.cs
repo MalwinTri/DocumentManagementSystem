@@ -1,4 +1,4 @@
-using DocumentManagementSystem.DAL;
+﻿using DocumentManagementSystem.DAL;
 using DocumentManagementSystem.Dto;
 using DocumentManagementSystem.Exceptions;
 using DocumentManagementSystem.Infrastructure.Services;
@@ -361,3 +361,4 @@ public class DocumentService
     }
 
 }
+

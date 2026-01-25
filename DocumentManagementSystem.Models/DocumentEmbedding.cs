@@ -1,4 +1,4 @@
-﻿namespace DocumentManagementSystem.Models;
+namespace DocumentManagementSystem.Models;
 
 public class DocumentEmbedding
 {

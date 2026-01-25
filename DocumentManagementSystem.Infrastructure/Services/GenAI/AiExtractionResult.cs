@@ -30,3 +30,4 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
         public string RawJson { get; set; } = "{}";
     }
 }
+

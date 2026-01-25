@@ -1,4 +1,4 @@
-using DocumentManagementSystem.Database;
+﻿using DocumentManagementSystem.Database;
 using DocumentManagementSystem.GenAI_Worker.AiWorker;
 using DocumentManagementSystem.Infrastructure.Services.GenAI;
 using DocumentManagementSystem.Elasticsearch.DependencyInjection;
@@ -26,3 +26,4 @@ IHost host = Host.CreateDefaultBuilder(args)
     .Build();
 
 await host.RunAsync();
+

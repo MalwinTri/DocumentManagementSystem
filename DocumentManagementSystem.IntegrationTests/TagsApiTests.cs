@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using FluentAssertions;
 using Xunit;
 
@@ -24,14 +24,15 @@ namespace DocumentManagementSystem.IntegrationTests
             var jsonResponse = await response.Content.ReadAsStringAsync();
             jsonResponse.Should().NotBeNullOrWhiteSpace();
 
-            // Die Antwort ist ein Array von Strings, daher prüfen wir, ob ein spezifisches Tag enthalten ist
+            // Die Antwort ist ein Array von Strings, daher prÃ¼fen wir, ob ein spezifisches Tag enthalten ist
             jsonResponse.Should().Contain("kw:Agile Testing Quadrants");
             jsonResponse.Should().Contain("kw:Funktionale Tests");
             jsonResponse.Should().Contain("kw:Teststrategie");
 
-            // Optional: Prüfen, ob das Array die erwartete Anzahl an Elementen enthält
+            // Optional: PrÃ¼fen, ob das Array die erwartete Anzahl an Elementen enthÃ¤lt
             var tags = System.Text.Json.JsonSerializer.Deserialize<string[]>(jsonResponse);
             tags.Should().HaveCountGreaterThan(0, "Die Antwort sollte mindestens ein Tag enthalten.");
         }
     }
 }
+

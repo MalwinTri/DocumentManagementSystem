@@ -1,4 +1,4 @@
-using DocumentManagementSystem.DAL;
+﻿using DocumentManagementSystem.DAL;
 using DocumentManagementSystem.Exceptions;
 using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
@@ -144,3 +144,4 @@ public class DocumentRepository(DmsDbContext db, ILogger<DocumentRepository> log
         return new { field, value };
     }
 }
+

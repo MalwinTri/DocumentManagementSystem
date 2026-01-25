@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore.Migrations;
+﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -18,7 +18,7 @@ namespace DocumentManagementSystem.Migrations
                     Title = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     Description = table.Column<string>(type: "text", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    //OcrText = table.Column<string>(type: "text", nullable: true), //neue entries für OCR und Summary
+                    //OcrText = table.Column<string>(type: "text", nullable: true), //neue entries fÃ¼r OCR und Summary
                     //Summary = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
@@ -82,3 +82,4 @@ namespace DocumentManagementSystem.Migrations
         }
     }
 }
+

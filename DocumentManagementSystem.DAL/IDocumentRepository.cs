@@ -1,4 +1,4 @@
-using DocumentManagementSystem.Models;
+﻿using DocumentManagementSystem.Models;
 
 namespace DocumentManagementSystem.DAL;
 
@@ -11,3 +11,4 @@ public interface IDocumentRepository
     Task<int> DeleteManyAsync(IEnumerable<Guid> ids, CancellationToken ct = default);
     Task SaveChangesAsync(CancellationToken ct = default);
 }
+
