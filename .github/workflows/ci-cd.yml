@@ -72,7 +72,7 @@ jobs:
           fi
 
       # -----------------------
-      # Start Garage (S3) - robust
+      # Start Garage (S3) - fixed for v2.1.0 (rpc_secret required)
       # -----------------------
       - name: Start Garage (S3)
         env:
@@ -82,21 +82,23 @@ jobs:
         run: |
           set -euxo pipefail
 
-          # Cleanup from previous attempts (safe)
           docker rm -f garage >/dev/null 2>&1 || true
           mkdir -p .ci/garage/meta .ci/garage/data
 
+          # Generate required RPC secret for Garage v2.1.0
+          RPC_SECRET="$(openssl rand -hex 32)"
+
           # IMPORTANT for Garage v2.1.0:
-          # rpc_bind_addr must be at ROOT (not inside [rpc])
-          cat > .ci/garage/garage.toml <<'TOML'
+          # - rpc_bind_addr and rpc_secret must be at ROOT level
+          cat > .ci/garage/garage.toml <<TOML
           metadata_dir = "/var/lib/garage/meta"
           data_dir = "/var/lib/garage/data"
           db_engine = "lmdb"
           replication_mode = "none"
 
-          # Garage v2.1.0 expects these at root-level
           rpc_bind_addr = "0.0.0.0:3901"
           rpc_public_addr = "127.0.0.1:3901"
+          rpc_secret = "${RPC_SECRET}"
 
           [s3_api]
           s3_region = "garage"
@@ -128,14 +130,15 @@ jobs:
             fi
 
             echo "Waiting for Garage... ($i/120)"
-            docker logs garage --tail 50 || true
+            docker logs garage --tail 80 || true
             sleep 1
           done
 
           echo "--- garage status ---"
-          docker exec garage /garage status
+          docker exec garage /garage status || true
+          echo "--- garage logs (tail) ---"
+          docker logs garage --tail 200 || true
 
-          # Extract node id
           NODE_ID="$(docker exec garage /garage status | grep -Eo '[a-f0-9]{8,}' | head -n 1 || true)"
           if [ -z "$NODE_ID" ]; then
             echo "Could not detect NODE_ID from /garage status"
@@ -145,12 +148,12 @@ jobs:
           fi
           echo "NODE_ID=$NODE_ID"
 
-          # Assign + apply layout
+          # Assign + apply layout (so node is not "NO ROLE ASSIGNED")
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
           yes | docker exec -i garage /garage layout apply
           docker exec garage /garage layout show || true
 
-          # Create keypair (Key ID + Secret key)
+          # Create keypair
           KEY_OUT="$(docker exec garage /garage key create "$GARAGE_KEY_NAME")"
           echo "$KEY_OUT"
 
@@ -179,7 +182,6 @@ jobs:
 
           # Sanity checks
           aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls || true
-          aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 mb "s3://$GARAGE_BUCKET" || true
           aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls "s3://$GARAGE_BUCKET" || true
 
       - name: Install dotnet format
