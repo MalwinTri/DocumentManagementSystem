@@ -135,7 +135,6 @@ jobs:
             docker exec -i garage /garage layout apply --version 1 <<< "y"
           fi
           docker exec garage /garage layout show || true
-
           # Create the key
           KEY_OUT="$(docker exec garage /garage key create "$GARAGE_KEY_NAME")"
           
@@ -144,21 +143,17 @@ jobs:
             echo "Failed to create Garage key."
             exit 1
           fi
-
           # Extract Access Key and Secret Key from KEY_OUT
           ACCESS_KEY="$(echo "$KEY_OUT" | sed -n 's/^[[:space:]]*Key ID:[[:space:]]*//p' | head -n 1 | tr -d '\r')"
           SECRET_KEY="$(echo "$KEY_OUT" | sed -n 's/^[[:space:]]*Secret key:[[:space:]]*//p' | head -n 1 | tr -d '\r')"
-
           # Check if keys are empty
           if [ -z "$ACCESS_KEY" ] || [ -z "$SECRET_KEY" ]; then
             echo "Failed to parse Key ID / Secret key."
             exit 1
           fi
-
           # Create bucket and assign permissions
           docker exec garage /garage bucket create "$GARAGE_BUCKET" || true
           docker exec garage /garage bucket allow --read --write --owner "$GARAGE_BUCKET" --key "$GARAGE_KEY_NAME"
-
           # Output the results
           echo "--- garage key list ---"
           docker exec garage /garage key list || true
@@ -180,7 +175,6 @@ jobs:
             echo "AWS_S3_FORCE_PATH_STYLE=true"
             echo "AWS_ENABLE_ENDPOINT_DISCOVERY=false"
           } >> "$GITHUB_ENV"
-
       - name: Install dotnet format
         run: dotnet tool install -g dotnet-format
 
