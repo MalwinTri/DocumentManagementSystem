@@ -29,7 +29,7 @@ jobs:
         run: |
           echo '{}' > appsettings.json
           echo "Dummy appsettings.json created"
-
+          
       - name: Ensure appsettings.Development.json exists
         run: |
           echo '{}' > appsettings.Development.json
