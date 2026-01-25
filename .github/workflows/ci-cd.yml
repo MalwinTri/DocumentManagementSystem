@@ -91,21 +91,21 @@ jobs:
           # IMPORTANT for Garage v2.1.0:
           # - rpc_bind_addr and rpc_secret must be at ROOT level
           cat > .ci/garage/garage.toml <<TOML
-          replication_factor = 1
-
           metadata_dir = "/var/lib/garage/meta"
           data_dir = "/var/lib/garage/data"
+          db_engine = "lmdb"
+          replication_mode = "none"
+
+          rpc_bind_addr = "0.0.0.0:3901"
+          rpc_public_addr = "127.0.0.1:3901"
           rpc_secret = "${RPC_SECRET}"
-          rpc_bind_addr = "[::]:3901"
-          api_key = "garage-access-key"
-          api_secret = "garage-secret-key"
 
           [s3_api]
-          api_bind_addr = "[::]:3900"
           s3_region = "garage"
+          api_bind_addr = "0.0.0.0:3900"
 
           [admin]
-          api_bind_addr = "[::]:3903"
+          api_bind_addr = "0.0.0.0:3903"
           TOML
 
           docker run -d --name garage \
@@ -148,12 +148,24 @@ jobs:
           fi
           echo "NODE_ID=$NODE_ID"
 
-          # Assign + apply layout (so node is not "NO ROLE ASSIGNED")
+          # Layout-Zuweisung
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
-          yes | docker exec -i garage /garage layout apply
+
+          # Zeige das Layout an, um die Version zu ermitteln
+          LAYOUT_VERSION=$(docker exec garage /garage layout show | grep -oP '(?<=Layout version: )\d+')
+
+          if [ -z "$LAYOUT_VERSION" ]; then
+            echo "Unable to fetch the layout version."
+            exit 1
+          fi
+
+          # Layout anwenden mit der richtigen Versionsnummer
+          docker exec -i garage /garage layout apply --version "$LAYOUT_VERSION"
+
+          # Bestätigung der Layoutänderungen
           docker exec garage /garage layout show || true
 
-          # Create keypair
+          # Erstelle Keypair
           KEY_OUT="$(docker exec garage /garage key create "$GARAGE_KEY_NAME")"
           echo "$KEY_OUT"
 
@@ -165,11 +177,11 @@ jobs:
             exit 1
           fi
 
-          # Bucket + permissions
+          # Bucket + Berechtigungen
           docker exec garage /garage bucket create "$GARAGE_BUCKET" || true
           docker exec garage /garage bucket allow --read --write --owner "$GARAGE_BUCKET" --key "$GARAGE_KEY_NAME"
 
-          # Export env for later steps
+          # Exportiere Umgebungsvariablen für spätere Schritte
           {
             echo "GARAGE_S3_ENDPOINT=$GARAGE_S3_ENDPOINT"
             echo "GARAGE_BUCKET=$GARAGE_BUCKET"
@@ -180,7 +192,7 @@ jobs:
             echo "AWS_DEFAULT_REGION=garage"
           } >> "$GITHUB_ENV"
 
-          # Sanity checks
+          # Sanity-Checks
           aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls || true
           aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls "s3://$GARAGE_BUCKET" || true
 
