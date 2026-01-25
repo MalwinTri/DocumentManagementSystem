@@ -15,6 +15,9 @@ env:
   DOTNET_VERSION: "8.0.x"
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository_owner }}/dms
+  GARAGE_S3_ENDPOINT: http://localhost:3900
+  GARAGE_BUCKET: ${{ secrets.CI_S3_BUCKET }}
+  GARAGE_KEY_NAME: ci-key
 
 jobs:
   build-and-test:
@@ -73,7 +76,7 @@ jobs:
 
       - name: Start Garage (S3)
         env:
-          GARAGE_S3_ENDPOINT: http://localhost:3900
+          GARAGE_S3_ENDPOINT: ${{ env.GARAGE_S3_ENDPOINT }}
           GARAGE_BUCKET: ${{ secrets.CI_S3_BUCKET }}
           GARAGE_KEY_NAME: ci-key
         run: |
@@ -132,9 +135,6 @@ jobs:
             sleep 1
           done
 
-          echo "--- garage status ---"
-          docker exec garage /garage status || true
-
           NODE_ID="$(docker exec garage /garage status | awk 'NR>1 && $1 ~ /^[0-9a-f]+$/ {print $1; exit}')"
           if [ -z "$NODE_ID" ]; then
             echo "Could not detect NODE_ID from /garage status"
@@ -145,7 +145,6 @@ jobs:
 
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
 
-          # no "yes |" to avoid broken pipe with pipefail
           if docker exec garage /garage layout apply --help | grep -q -- '--confirm'; then
             docker exec garage /garage layout apply --version 1 --confirm
           else
@@ -154,10 +153,7 @@ jobs:
 
           docker exec garage /garage layout show || true
 
-          # Create keypair (name-based)
           KEY_OUT="$(docker exec garage /garage key create "$GARAGE_KEY_NAME")"
-          echo "$KEY_OUT"
-
           ACCESS_KEY="$(printf "%s\n" "$KEY_OUT" | sed -n 's/^[[:space:]]*Key ID:[[:space:]]*//p' | head -n 1 | tr -d '\r')"
           SECRET_KEY="$(printf "%s\n" "$KEY_OUT" | sed -n 's/^[[:space:]]*Secret key:[[:space:]]*//p' | head -n 1 | tr -d '\r')"
 
@@ -166,19 +162,14 @@ jobs:
             exit 1
           fi
 
-          # Bucket + permissions
           docker exec garage /garage bucket create "$GARAGE_BUCKET" || true
           docker exec garage /garage bucket allow --read --write --owner "$GARAGE_BUCKET" --key "$GARAGE_KEY_NAME"
 
-          # Debug: prove Garage knows the key and bucket
           echo "--- garage key list ---"
           docker exec garage /garage key list || true
           echo "--- garage bucket list ---"
           docker exec garage /garage bucket list || true
-          echo "--- garage bucket info ---"
-          docker exec garage /garage bucket info "$GARAGE_BUCKET" || true
 
-          # Export env for later steps
           {
             echo "GARAGE_S3_ENDPOINT=$GARAGE_S3_ENDPOINT"
             echo "GARAGE_BUCKET=$GARAGE_BUCKET"
@@ -191,24 +182,6 @@ jobs:
             echo "AWS_S3_FORCE_PATH_STYLE=true"
             echo "AWS_ENABLE_ENDPOINT_DISCOVERY=false"
           } >> "$GITHUB_ENV"
-
-          # IMPORTANT: make creds available IN THIS STEP for aws cli smoke test
-          export AWS_ACCESS_KEY_ID="$ACCESS_KEY"
-          export AWS_SECRET_ACCESS_KEY="$SECRET_KEY"
-          export AWS_DEFAULT_REGION="garage"
-          export AWS_EC2_METADATA_DISABLED="true"
-          export AWS_S3_FORCE_PATH_STYLE="true"
-          export AWS_ENABLE_ENDPOINT_DISCOVERY="false"
-
-          # Smoke test with AWS CLI (PUT/GET)
-          echo "hello" > /tmp/ci_garage_test.txt
-          aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3api put-object \
-            --bucket "$GARAGE_BUCKET" --key "ci/smoke.txt" --body /tmp/ci_garage_test.txt
-
-          aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3api head-object \
-            --bucket "$GARAGE_BUCKET" --key "ci/smoke.txt"
-
-          aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls "s3://$GARAGE_BUCKET" || true
 
       - name: Install dotnet format
         run: dotnet tool install -g dotnet-format
@@ -254,7 +227,6 @@ jobs:
           GarageS3__Bucket: ${{ env.GARAGE_BUCKET }}
           GarageS3__Region: garage
 
-          # AWS SDK stability for S3-compatible endpoints
           AWS_ACCESS_KEY_ID: ${{ env.GARAGE_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ env.GARAGE_SECRET_KEY }}
           AWS_DEFAULT_REGION: garage
@@ -273,63 +245,3 @@ jobs:
         run: |
           docker ps -a
           docker logs garage --tail 300 || true
-
-  docker-build-push:
-    name: Docker Build & Push (master / CI_CD_Pipeline)
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/CI_CD_Pipeline'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build & Push API
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./DocumentManagementSystem/Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
-
-      - name: Build & Push OCR Worker
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./OCR_Worker/Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ocr:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ocr:${{ github.sha }}
-
-      - name: Build & Push GenAI Worker
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./DocumentManagementSystem.GenAI_Worker/Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-genai:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-genai:${{ github.sha }}
-
-      - name: Build & Push AccessBatch
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./DocumentManagementSystem.AccessBatch/Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-accessbatch:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-accessbatch:${{ github.sha }}
