@@ -24,7 +24,14 @@ namespace DocumentManagementSystem.IntegrationTests
             var jsonResponse = await response.Content.ReadAsStringAsync();
             jsonResponse.Should().NotBeNullOrWhiteSpace();
 
-            jsonResponse.Should().Contain("tag"); // Beispiel für das enthaltene Wort "tag"
+            // Die Antwort ist ein Array von Strings, daher prüfen wir, ob ein spezifisches Tag enthalten ist
+            jsonResponse.Should().Contain("kw:Agile Testing Quadrants");
+            jsonResponse.Should().Contain("kw:Funktionale Tests");
+            jsonResponse.Should().Contain("kw:Teststrategie");
+
+            // Optional: Prüfen, ob das Array die erwartete Anzahl an Elementen enthält
+            var tags = System.Text.Json.JsonSerializer.Deserialize<string[]>(jsonResponse);
+            tags.Should().HaveCountGreaterThan(0, "Die Antwort sollte mindestens ein Tag enthalten.");
         }
     }
 }

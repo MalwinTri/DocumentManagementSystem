@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Logging;
 
 public sealed class DmsApiFactory : WebApplicationFactory<Program>
 {
@@ -7,7 +8,14 @@ public sealed class DmsApiFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Testing");
 
-        // Wichtig: Host+Port müssen zum docker ps passen (bei dir 5433)
+        // Logging konfigurieren
+        builder.ConfigureLogging(logging =>
+        {
+            logging.AddConsole(); 
+            logging.SetMinimumLevel(LogLevel.Information); 
+        });
+
+        // Weitere Umgebungsvariablen
         Environment.SetEnvironmentVariable("ConnectionStrings__Default",
             "Host=localhost;Port=5433;Database=dms;Username=postgres;Password=postgres");
 
@@ -19,7 +27,7 @@ public sealed class DmsApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("GarageS3__Bucket", "documents");
         Environment.SetEnvironmentVariable("GarageS3__Region", "garage");
 
-        // falls RabbitMQ wirklich gebraucht wird:
+        // RabbitMQ Umgebungseinvariablen setzen
         Environment.SetEnvironmentVariable("RABBIT_HOST", "localhost");
         Environment.SetEnvironmentVariable("RABBIT_USER", "guest");
         Environment.SetEnvironmentVariable("RABBIT_PASSWORD", "guest");

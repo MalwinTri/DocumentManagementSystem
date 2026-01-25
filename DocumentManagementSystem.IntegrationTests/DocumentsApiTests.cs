@@ -40,8 +40,11 @@ namespace DocumentManagementSystem.IntegrationTests
         {
             const string url = "/api/documents";
 
-            // Beispiel für ein leeres PDF (definitiv ungültig)
-            var pdfBytes = new byte[] { 0x25, 0x50, 0x44, 0x46, 0x2D }; // "%PDF-"
+            var pdfBytes = new byte[]
+            {
+                0x25, 0x50, 0x44, 0x46, 0x2D, // "%PDF-"
+                0x0A, 0x0A, 0x25, 0x25, 0x45, 0x4F, 0x46  // "%%EOF"
+            };
 
             // Überprüfen, ob die Datei eine gültige PDF ist
             if (!IsValidPdf(pdfBytes))
@@ -57,55 +60,58 @@ namespace DocumentManagementSystem.IntegrationTests
 
             // Titel und optionale Felder
             content.Add(new StringContent("Integration Test Document"), "title");
-            content.Add(new StringContent("Beschreibung des Testdokuments"), "description"); // Optional
-            content.Add(new StringContent("tag1"), "tags"); // Optional
-            content.Add(new StringContent("tag2"), "tags"); // Optional
+            content.Add(new StringContent("Beschreibung des Testdokuments"), "description");
+            content.Add(new StringContent("tag1"), "tags");
+            content.Add(new StringContent("tag2"), "tags");
 
-            // Schritt 1: Hochladen des Dokuments
-            var uploadResp = await _client.PostAsync(url, content);
+            try
+            {
+                // Schritt 1: Hochladen des Dokuments
+                var uploadResp = await _client.PostAsync(url, content);
 
-            // Prüfen, ob das Dokument erfolgreich hochgeladen wurde
-            uploadResp.StatusCode.Should().Be(HttpStatusCode.Created);
+                // Logge den Status und die Antwort des Servers
+                Console.WriteLine($"StatusCode: {uploadResp.StatusCode}");
+                var responseContent = await uploadResp.Content.ReadAsStringAsync();
+                Console.WriteLine($"Response Content: {responseContent}");
 
-            var uploadJson = await uploadResp.Content.ReadAsStringAsync();
-            uploadJson.Should().NotBeNullOrWhiteSpace();
+                // Prüfen, ob das Dokument erfolgreich hochgeladen wurde
+                uploadResp.StatusCode.Should().Be(HttpStatusCode.Created);
 
-            using var uploadDoc = JsonDocument.Parse(uploadJson);
-            var root = uploadDoc.RootElement;
+                var uploadJson = await uploadResp.Content.ReadAsStringAsync();
+                uploadJson.Should().NotBeNullOrWhiteSpace();
 
-            root.TryGetProperty("id", out var idProp).Should().BeTrue("Response sollte 'id' enthalten.");
+                using var uploadDoc = JsonDocument.Parse(uploadJson);
+                var root = uploadDoc.RootElement;
 
-            var idValue = idProp.GetString();
-            Guid.TryParse(idValue, out var docId).Should().BeTrue($"id sollte GUID sein, war aber: {idValue}");
+                root.TryGetProperty("id", out var idProp).Should().BeTrue("Response sollte 'id' enthalten.");
 
-            uploadResp.Headers.Location.Should().NotBeNull();
+                var idValue = idProp.GetString();
+                Guid.TryParse(idValue, out var docId).Should().BeTrue($"id sollte GUID sein, war aber: {idValue}");
 
-            // Schritt 2: Das Dokument mit der erstellten ID abrufen
-            var getResp = await _client.GetAsync($"/api/documents/{docId}");
-            getResp.StatusCode.Should().Be(HttpStatusCode.OK);
+                uploadResp.Headers.Location.Should().NotBeNull();
 
-            var getJson = await getResp.Content.ReadAsStringAsync();
-            getJson.Should().NotBeNullOrWhiteSpace();
+                // Schritt 2: Das Dokument mit der erstellten ID abrufen
+                var getResp = await _client.GetAsync($"/api/documents/{docId}");
+                getResp.StatusCode.Should().Be(HttpStatusCode.OK);
 
-            using var getDoc = JsonDocument.Parse(getJson);
-            var getRoot = getDoc.RootElement;
+                var getJson = await getResp.Content.ReadAsStringAsync();
+                getJson.Should().NotBeNullOrWhiteSpace();
 
-            getRoot.GetProperty("id").GetString().Should().Be(docId.ToString());
-            getRoot.GetProperty("title").GetString().Should().Be("Integration Test Document");
-            getRoot.GetProperty("description").GetString().Should().Be("Beschreibung des Testdokuments");
+                using var getDoc = JsonDocument.Parse(getJson);
+                var getRoot = getDoc.RootElement;
 
-            // Prüfung der Tags
-            getRoot.GetProperty("tags").EnumerateArray().Count().Should().Be(2); // Tags zählen
+                getRoot.GetProperty("id").GetString().Should().Be(docId.ToString());
+                getRoot.GetProperty("title").GetString().Should().Be("Integration Test Document");
+                getRoot.GetProperty("description").GetString().Should().Be("Beschreibung des Testdokuments");
 
-            // Optionaler Schritt 3: Prüfen, ob der OCR/GenAI Worker korrekt angestoßen wurde
-            // Hier sollte geprüft werden, ob das PDF erfolgreich verarbeitet wurde (OCR/GenAI):
-            var ocrJob = new { DocumentId = docId, S3Key = $"{docId}.pdf" };
-
-            // Hier würdest du prüfen, ob der OCR-Job in einer Warteschlange (z.B. RabbitMQ) angekommen ist
-            // Dies wird oft durch zusätzliche APIs oder Mock-Services simuliert
-
-            var ocrJobWasSent = true; // Hier müsste eine echte Überprüfung des Job-Status durchgeführt werden
-            ocrJobWasSent.Should().BeTrue("Der OCR/GenAI Worker wurde nicht korrekt angestoßen.");
+                // Prüfung der Tags
+                getRoot.GetProperty("tags").EnumerateArray().Count().Should().Be(2); // Tags zählen
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Test fehlgeschlagen: {ex.Message}");
+                throw;
+            }
         }
     }
 }
