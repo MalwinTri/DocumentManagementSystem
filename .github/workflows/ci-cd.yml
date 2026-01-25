@@ -78,7 +78,7 @@ jobs:
         env:
           GARAGE_S3_ENDPOINT: http://localhost:3900
           GARAGE_BUCKET: ${{ secrets.CI_S3_BUCKET }}
-          GARAGE_KEY_NAME: ${{ secrets.CI_S3_KEY_NAME }}  # Garage Key
+          GARAGE_KEY_NAME: ${{ secrets.CI_S3_KEY_NAME }}
         run: |
           set -euxo pipefail
 
@@ -149,8 +149,13 @@ jobs:
 
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
 
-          # IMPORTANT: v2.x requires version number
-          yes | docker exec -i garage /garage layout apply --version 1
+          # Warten und Anwendung des Layouts mit Retry-Mechanismus und Bestätigung
+          for i in {1..3}; do
+            echo "Versuche, Layout anzuwenden (Versuch $i/3)..."
+            docker exec -i garage /garage layout apply --version 1 --confirm && break
+            echo "Layout-Anwendung fehlgeschlagen, warte 30 Sekunden und versuche es erneut ($i/3)"
+            sleep 30
+          done
 
           docker exec garage /garage layout show || true
 
