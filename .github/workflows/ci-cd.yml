@@ -129,14 +129,12 @@ jobs:
             exit 1
           fi
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
-          # no "yes |" to avoid broken pipe with pipefail
           if docker exec garage /garage layout apply --help | grep -q -- '--confirm'; then
             docker exec garage /garage layout apply --version 1 --confirm
           else
             docker exec -i garage /garage layout apply --version 1 <<< "y"
           fi
           docker exec garage /garage layout show || true
-          # Create keypair (name-based)
           KEY_OUT="$(docker exec garage /garage key create "$GARAGE_KEY_NAME")"
           echo "$KEY_OUT"
           ACCESS_KEY="$(printf "%s\n" "$KEY_OUT" | sed -n 's/^[[:space:]]*Key ID:[[:space:]]*//p' | head -n 1 | tr -d '\r')"
@@ -145,17 +143,14 @@ jobs:
             echo "Failed to parse Key ID / Secret key."
             exit 1
           fi
-          # Bucket + permissions
           docker exec garage /garage bucket create "$GARAGE_BUCKET" || true
           docker exec garage /garage bucket allow --read --write --owner "$GARAGE_BUCKET" --key "$GARAGE_KEY_NAME"
-          # Debug: prove Garage knows the key and bucket
           echo "--- garage key list ---"
           docker exec garage /garage key list || true
           echo "--- garage bucket list ---"
           docker exec garage /garage bucket list || true
           echo "--- garage bucket info ---"
           docker exec garage /garage bucket info "$GARAGE_BUCKET" || true
-          # Export env for later steps
           {
             echo "GARAGE_S3_ENDPOINT=$GARAGE_S3_ENDPOINT"
             echo "GARAGE_BUCKET=$GARAGE_BUCKET"
@@ -168,7 +163,7 @@ jobs:
             echo "AWS_S3_FORCE_PATH_STYLE=true"
             echo "AWS_ENABLE_ENDPOINT_DISCOVERY=false"
           } >> "$GITHUB_ENV"
-          
+
       - name: Install dotnet format
         run: dotnet tool install -g dotnet-format
 
@@ -232,6 +227,7 @@ jobs:
         run: |
           docker ps -a
           docker logs garage --tail 300 || true
+
   docker-build-push:
     name: Docker Build & Push (master / CI_CD_Pipeline)
     runs-on: ubuntu-latest
@@ -261,6 +257,7 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
+
       - name: Build & Push OCR Worker
         uses: docker/build-push-action@v6
         with:
@@ -270,6 +267,7 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ocr:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ocr:${{ github.sha }}
+
       - name: Build & Push GenAI Worker
         uses: docker/build-push-action@v6
         with:
@@ -279,6 +277,7 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-genai:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-genai:${{ github.sha }}
+
       - name: Build & Push AccessBatch
         uses: docker/build-push-action@v6
         with:
