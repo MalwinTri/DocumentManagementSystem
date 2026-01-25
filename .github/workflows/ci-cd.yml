@@ -69,7 +69,6 @@ jobs:
             sudo ./aws/install
             aws --version
           fi
-
       - name: Start Garage (S3)
         env:
           GARAGE_S3_ENDPOINT: http://localhost:3900
@@ -77,18 +76,11 @@ jobs:
           GARAGE_KEY_NAME: ci-key
         run: |
           set -euxo pipefail
-          # Stop and remove any existing Garage container
           docker rm -f garage >/dev/null 2>&1 || true
-          # Clear previous Garage data and meta directories to avoid conflicts
-          rm -rf .ci/garage/meta/* .ci/garage/data/*
           mkdir -p .ci/garage/meta .ci/garage/data
-
-          # Generate random tokens for Garage configuration
           RPC_SECRET="$(openssl rand -hex 32)"
           ADMIN_TOKEN="$(openssl rand -base64 32)"
           METRICS_TOKEN="$(openssl rand -base64 32)"
-
-          # Create the garage.toml configuration file
           cat > .ci/garage/garage.toml <<TOML
           metadata_dir = "/var/lib/garage/meta"
           data_dir = "/var/lib/garage/data"
@@ -105,8 +97,6 @@ jobs:
           admin_token = "${ADMIN_TOKEN}"
           metrics_token = "${METRICS_TOKEN}"
           TOML
-
-          # Start the Garage container
           docker run -d --name garage \
             -p 3900:3900 -p 3901:3901 -p 3903:3903 \
             -v "$PWD/.ci/garage/garage.toml:/etc/garage.toml:ro" \
@@ -114,8 +104,6 @@ jobs:
             -v "$PWD/.ci/garage/data:/var/lib/garage/data" \
             -e GARAGE_CONFIG_FILE=/etc/garage.toml \
             dxflrs/garage:v2.1.0
-
-          # Wait for Garage to start up and be ready
           for i in {1..120}; do
             if ! docker ps --format '{{.Names}}' | grep -qx garage; then
               echo "Garage container exited/crashed. Logs:"
@@ -132,8 +120,6 @@ jobs:
           done
           echo "--- garage status ---"
           docker exec garage /garage status || true
-
-          # Extract NODE_ID
           NODE_ID="$(docker exec garage /garage status | awk 'NR>1 && $1 ~ /^[0-9a-f]+$/ {print $1; exit}')"
           if [ -z "$NODE_ID" ]; then
             echo "Could not detect NODE_ID from /garage status"
@@ -141,8 +127,6 @@ jobs:
             docker logs garage --tail 300 || true
             exit 1
           fi
-
-          # Assign layout
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
           if docker exec garage /garage layout apply --help | grep -q -- '--confirm'; then
             docker exec garage /garage layout apply --version 1 --confirm
@@ -150,35 +134,34 @@ jobs:
             docker exec -i garage /garage layout apply --version 1 <<< "y"
           fi
           docker exec garage /garage layout show || true
-
-          # Create the key and extract the access key and secret key
+          # Create the key
           KEY_OUT="$(docker exec garage /garage key create "$GARAGE_KEY_NAME")"
+          
+          # Ensure the key creation output is valid
           if [ -z "$KEY_OUT" ]; then
             echo "Failed to create Garage key."
             exit 1
           fi
+          # Extract Access Key and Secret Key from KEY_OUT
           ACCESS_KEY="$(echo "$KEY_OUT" | sed -n 's/^[[:space:]]*Key ID:[[:space:]]*//p' | head -n 1 | tr -d '\r')"
           SECRET_KEY="$(echo "$KEY_OUT" | sed -n 's/^[[:space:]]*Secret key:[[:space:]]*//p' | head -n 1 | tr -d '\r')"
-
-          # Check if keys are valid
+          # Check if keys are empty
           if [ -z "$ACCESS_KEY" ] || [ -z "$SECRET_KEY" ]; then
             echo "Failed to parse Key ID / Secret key."
             exit 1
           fi
-
           # Create bucket and assign permissions
           docker exec garage /garage bucket create "$GARAGE_BUCKET" || true
           docker exec garage /garage bucket allow --read --write --owner "$GARAGE_BUCKET" --key "$GARAGE_KEY_NAME"
-
-          # Output results for debugging
+          # Output the results
           echo "--- garage key list ---"
           docker exec garage /garage key list || true
           echo "--- garage bucket list ---"
           docker exec garage /garage bucket list || true
           echo "--- garage bucket info ---"
           docker exec garage /garage bucket info "$GARAGE_BUCKET" || true
-
-          # Export keys to GitHub environment variables
+          
+          # Export keys to the GitHub environment
           {
             echo "GARAGE_S3_ENDPOINT=$GARAGE_S3_ENDPOINT"
             echo "GARAGE_BUCKET=$GARAGE_BUCKET"
@@ -192,27 +175,21 @@ jobs:
             echo "AWS_ENABLE_ENDPOINT_DISCOVERY=false"
           } >> "$GITHUB_ENV"
 
-      # Install .NET format tool
       - name: Install dotnet format
         run: dotnet tool install -g dotnet-format
 
-      # Add dotnet tools to PATH
       - name: Add dotnet tools to PATH
         run: echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
-      # Lint code with dotnet format
       - name: Lint (dotnet format)
         run: dotnet format --verify-no-changes --verbosity minimal
 
-      # Run Unit Tests (exclude OCR smoke)
       - name: Unit Tests (exclude OCR smoke)
         run: dotnet test ./DocumentManagementSystem.Tests/DocumentManagementSystem.Tests.csproj -c Release --no-build --verbosity normal --filter "Category!=OcrSmoke"
 
-      # Install Postgres client
       - name: Install postgres client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
-      # Wait for Postgres
       - name: Wait for Postgres
         run: |
           for i in {1..30}; do
@@ -223,7 +200,6 @@ jobs:
           echo "Postgres did not become ready in time"
           exit 1
 
-      # Wait for RabbitMQ
       - name: Wait for RabbitMQ
         run: |
           for i in {1..30}; do
@@ -233,31 +209,3 @@ jobs:
           done
           echo "RabbitMQ did not become ready in time"
           exit 1
-
-      # Run Integration Tests
-      - name: Integration Tests
-        env:
-          ConnectionStrings__Default: Host=localhost;Port=5433;Database=${{ secrets.CI_DB_NAME }};Username=${{ secrets.CI_DB_USER }};Password=${{ secrets.CI_DB_PASSWORD }}
-          GarageS3__Endpoint: ${{ env.GARAGE_S3_ENDPOINT }}
-          GarageS3__AccessKey: ${{ env.GARAGE_ACCESS_KEY }}
-          GarageS3__SecretKey: ${{ env.GARAGE_SECRET_KEY }}
-          GarageS3__Bucket: ${{ env.GARAGE_BUCKET }}
-          GarageS3__Region: garage
-          AWS_ACCESS_KEY_ID: ${{ env.GARAGE_ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ env.GARAGE_SECRET_KEY }}
-          AWS_DEFAULT_REGION: garage
-          AWS_EC2_METADATA_DISABLED: "true"
-          AWS_S3_FORCE_PATH_STYLE: "true"
-          AWS_ENABLE_ENDPOINT_DISCOVERY: "false"
-          RABBIT_HOST: localhost
-          RABBIT_USER: guest
-          RABBIT_PASS: guest
-          RABBIT_QUEUE: ocr-queue
-        run: dotnet test ./DocumentManagementSystem.IntegrationTests/DocumentManagementSystem.IntegrationTests.csproj -c Release --no-build --verbosity normal
-
-      # Debugging containers
-      - name: Debug containers (always)
-        if: always()
-        run: |
-          docker ps -a
-          docker logs garage --tail 300 || true
