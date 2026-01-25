@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -22,7 +22,7 @@ public class OcrPdfCliTests
         var pdf = Path.Combine(Path.GetTempPath(), $"ocr_{Guid.NewGuid():N}.pdf");
 
         Document.Create(c => c.Page(p => p.Content().Padding(40)
-            .Text("Hello OCR â€“ GrÃ¼ezi Ã–sterreich! 456").FontSize(28)))
+            .Text("Hello OCR – Grüezi Österreich! 456").FontSize(28)))
             .GeneratePdf(pdf);
 
         var tiffPattern = Path.Combine(Path.GetTempPath(), $"ocr_{Guid.NewGuid():N}_%03d.tiff");
@@ -57,7 +57,7 @@ public class OcrPdfCliTests
             folded.Should().Contain("ocr");
             folded.Should().Contain("456");
 
-            // Tolerant bei "GrÃ¼ezi" + "Ã–sterreich"
+            // Tolerant bei "Grüezi" + "Österreich"
             folded.Should().ContainAny(new[] { "gruezi", "griiezi", "gruzi" });
             folded.Should().ContainAny(new[] { "oesterreich", "osterreich" });
         }
@@ -154,16 +154,16 @@ public class OcrPdfCliTests
         => await OcrCliSmokeTests_Tools.RunCliAsync(file, args, env);
     static void TryDelete(string path) => OcrCliSmokeTests_Tools.TryDelete(path);
 
-    // OCR-freundliche Normalisierung (fÃ¼r den E2E-Test beibehalten)
+    // OCR-freundliche Normalisierung (für den E2E-Test beibehalten)
     static string FoldForOcrAssertions(string s)
     {
         if (string.IsNullOrEmpty(s)) return string.Empty;
 
         var mapped = s
-            .Replace("Ã„", "Ae").Replace("Ã¤", "ae")
-            .Replace("Ã–", "Oe").Replace("Ã¶", "oe")
-            .Replace("Ãœ", "Ue").Replace("Ã¼", "ue")
-            .Replace("ÃŸ", "ss");
+            .Replace("Ä", "Ae").Replace("ä", "ae")
+            .Replace("Ö", "Oe").Replace("ö", "oe")
+            .Replace("Ü", "Ue").Replace("ü", "ue")
+            .Replace("ß", "ss");
 
         var formD = mapped.Normalize(NormalizationForm.FormD);
         var sb = new StringBuilder(formD.Length);
@@ -175,7 +175,7 @@ public class OcrPdfCliTests
         }
         var noMarks = sb.ToString().Normalize(NormalizationForm.FormC);
 
-        noMarks = noMarks.Replace('â€“', '-').Replace('â€”', '-');
+        noMarks = noMarks.Replace('–', '-').Replace('—', '-');
         noMarks = Regex.Replace(noMarks, @"[\p{P}\p{S}]", " ");
         noMarks = Regex.Replace(noMarks, @"\s+", " ").Trim();
 
@@ -266,4 +266,3 @@ static class OcrCliSmokeTests_Tools
         try { if (File.Exists(path)) File.Delete(path); } catch { }
     }
 }
-
