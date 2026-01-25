@@ -72,17 +72,17 @@ jobs:
           fi
 
       # -----------------------
-      # Start Garage (S3)
+      # Start Garage (S3) - robust
       # -----------------------
       - name: Start Garage (S3)
         env:
           GARAGE_S3_ENDPOINT: http://localhost:3900
-          GARAGE_ADMIN_ENDPOINT: http://localhost:3903
           GARAGE_BUCKET: ${{ secrets.CI_S3_BUCKET }}
           GARAGE_KEY_NAME: ci-key
         run: |
           set -euxo pipefail
 
+          # Cleanup from previous attempts (safe)
           docker rm -f garage >/dev/null 2>&1 || true
 
           mkdir -p .ci/garage/meta .ci/garage/data
@@ -112,39 +112,28 @@ jobs:
             -e GARAGE_CONFIG_FILE=/etc/garage.toml \
             dxflrs/garage:v2.1.0
 
-          # Wait until container is running and admin api is reachable
+          # Wait until /garage status works (this is the reliable readiness check)
           for i in {1..90}; do
             if ! docker ps --format '{{.Names}}' | grep -qx garage; then
-              echo "Garage container is not running (crashed/exited). Logs:"
+              echo "Garage container exited/crashed. Logs:"
               docker logs garage --tail 300 || true
               exit 1
             fi
 
-            if curl -fsS "$GARAGE_ADMIN_ENDPOINT/health" >/dev/null 2>&1; then
-              echo "Garage admin health OK."
+            if docker exec garage /garage status >/dev/null 2>&1; then
+              echo "Garage is up."
               break
             fi
 
-            echo "Waiting for Garage admin /health... ($i/90)"
-            docker logs garage --tail 20 || true
-            sleep 2
-          done
-
-          # Ensure S3 port responds too
-          for i in {1..60}; do
-            if curl -fsS "$GARAGE_S3_ENDPOINT/" >/dev/null 2>&1; then
-              echo "Garage S3 endpoint reachable."
-              break
-            fi
-            echo "Waiting for Garage S3... ($i/60)"
+            echo "Waiting for Garage... ($i/90)"
+            docker logs garage --tail 50 || true
             sleep 2
           done
 
           echo "--- garage status ---"
-          docker exec garage /garage status || true
-          echo "--- garage logs (tail) ---"
-          docker logs garage --tail 200 || true
+          docker exec garage /garage status
 
+          # Extract node id from status output (first long hex id)
           NODE_ID="$(docker exec garage /garage status | grep -Eo '[a-f0-9]{8,}' | head -n 1 || true)"
           if [ -z "$NODE_ID" ]; then
             echo "Could not detect NODE_ID from /garage status"
@@ -154,14 +143,14 @@ jobs:
           fi
           echo "NODE_ID=$NODE_ID"
 
-          # Assign a role so S3 works
+          # Assign + apply layout so node is not "NO ROLE ASSIGNED"
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
           yes | docker exec -i garage /garage layout apply
 
           echo "--- garage layout ---"
           docker exec garage /garage layout show || true
 
-          # Create a keypair
+          # Create keypair (Key ID + Secret key)
           KEY_OUT="$(docker exec garage /garage key create "$GARAGE_KEY_NAME")"
           echo "$KEY_OUT"
 
@@ -173,11 +162,11 @@ jobs:
             exit 1
           fi
 
-          # Bucket + permissions
+          # Create bucket + allow rw
           docker exec garage /garage bucket create "$GARAGE_BUCKET" || true
           docker exec garage /garage bucket allow --read --write --owner "$GARAGE_BUCKET" --key "$GARAGE_KEY_NAME"
 
-          # Export env for later steps (aws cli + tests)
+          # Export env for later steps
           {
             echo "GARAGE_S3_ENDPOINT=$GARAGE_S3_ENDPOINT"
             echo "GARAGE_BUCKET=$GARAGE_BUCKET"
@@ -188,7 +177,9 @@ jobs:
             echo "AWS_DEFAULT_REGION=garage"
           } >> "$GITHUB_ENV"
 
+          # Sanity checks
           aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls || true
+          aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 mb "s3://$GARAGE_BUCKET" || true
           aws --endpoint-url "$GARAGE_S3_ENDPOINT" s3 ls "s3://$GARAGE_BUCKET" || true
 
       - name: Install dotnet format
@@ -244,7 +235,7 @@ jobs:
         if: always()
         run: |
           docker ps -a
-          docker logs garage --tail 200 || true
+          docker logs garage --tail 300 || true
 
   docker-build-push:
     name: Docker Build & Push (master / CI_CD_Pipeline)
