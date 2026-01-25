@@ -149,8 +149,14 @@ jobs:
 
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
 
-          # IMPORTANT: v2.x requires version number
-          yes | docker exec -i garage /garage layout apply --version 1
+          # ✅ FIX: do NOT use "yes |" (pipefail -> broken pipe)
+          # Prefer --confirm if supported:
+          if docker exec garage /garage layout apply --help | grep -q -- '--confirm'; then
+            docker exec garage /garage layout apply --version 1 --confirm
+          else
+            # fallback without broken pipe
+            docker exec -i garage /garage layout apply --version 1 <<< "y"
+          fi
 
           docker exec garage /garage layout show || true
 
