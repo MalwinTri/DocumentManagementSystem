@@ -744,7 +744,6 @@ export default function Dashboard() {
     const [showAllTags, setShowAllTags] = React.useState(false);
 
     const [openItem, setOpenItem] = React.useState(null);
-    const [query, setQuery] = React.useState("");
 
     // Polling state
     const pollTimersRef = React.useRef(new Map()); // id -> intervalId
