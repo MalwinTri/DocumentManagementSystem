@@ -1,4 +1,4 @@
-using Amazon.S3;
+﻿using Amazon.S3;
 using Amazon.S3.Model;
 using DocumentManagementSystem.Models;
 using DocumentManagementSystem.OCR_Worker.Worker;
@@ -40,3 +40,4 @@ namespace DocumentManagementSystem.Tests.OCR
         }
     }
 }
+

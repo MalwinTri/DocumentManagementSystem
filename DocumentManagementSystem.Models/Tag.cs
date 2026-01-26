@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace DocumentManagementSystem.Models;
 
@@ -11,3 +11,4 @@ public class Tag
 
     public ICollection<Document> Documents { get; set; } = new HashSet<Document>();
 }
+

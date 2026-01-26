@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.OCR_Worker.Worker;
+﻿namespace DocumentManagementSystem.OCR_Worker.Worker;
 
 public sealed class GarageS3Options
 {
@@ -8,3 +8,4 @@ public sealed class GarageS3Options
     public string AccessKey { get; set; } = "";
     public string SecretKey { get; set; } = "";
 }
+

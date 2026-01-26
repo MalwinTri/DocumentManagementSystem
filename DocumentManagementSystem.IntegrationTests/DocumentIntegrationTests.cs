@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using FluentAssertions;
 using Xunit;
@@ -30,15 +30,16 @@ namespace DocumentManagementSystem.IntegrationTests
             var uploadResp = await _client.PostAsync(url, content);
             uploadResp.StatusCode.Should().Be(HttpStatusCode.Created);
 
-            // Prüfen, ob die OCR-Queue benachrichtigt wurde (Dummy-Check, da RabbitMQ Integration nicht direkt überprüfbar ist)
+            // PrÃ¼fen, ob die OCR-Queue benachrichtigt wurde (Dummy-Check, da RabbitMQ Integration nicht direkt Ã¼berprÃ¼fbar ist)
             var ocrJobQueued = await CheckRabbitMqForJob("test.pdf");
             ocrJobQueued.Should().BeTrue();
         }
 
         private async Task<bool> CheckRabbitMqForJob(string fileName)
         {
-            // Simulierter Check, wie ein RabbitMQ-Job überprüft werden könnte (abhängig von deiner tatsächlichen Integration)
+            // Simulierter Check, wie ein RabbitMQ-Job Ã¼berprÃ¼ft werden kÃ¶nnte (abhÃ¤ngig von deiner tatsÃ¤chlichen Integration)
             return true;
         }
     }
 }
+

@@ -1,4 +1,4 @@
-using Amazon.S3;
+﻿using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.Runtime;
 using Microsoft.Extensions.Configuration;
@@ -65,3 +65,4 @@ namespace DocumentManagementSystem.Infrastructure.Services
         }
     }
 }
+

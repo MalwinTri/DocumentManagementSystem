@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.Exceptions;
+﻿namespace DocumentManagementSystem.Exceptions;
 
 public class RepositoryException : AppException
 {
@@ -24,3 +24,4 @@ public class RepositoryException : AppException
     public static RepositoryException Save(string entity, string? detail = null, Exception? inner = null) =>
         new($"Failed to persist {entity}", operation: "save_changes", entity: entity, detail: detail, inner: inner);
 }
+

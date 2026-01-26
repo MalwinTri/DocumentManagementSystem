@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using FluentAssertions;
@@ -18,15 +18,15 @@ namespace DocumentManagementSystem.IntegrationTests
         [Fact]
         public async Task DeleteDocument_ShouldReturnNoContent_WhenDocumentExists()
         {
-            // Erstellen Sie ein Dokument, um es später zu löschen
+            // Erstellen Sie ein Dokument, um es spÃ¤ter zu lÃ¶schen
             var documentId = await CreateTestDocument();
 
-            // Löschen Sie das Dokument
+            // LÃ¶schen Sie das Dokument
             var deleteResponse = await _client.DeleteAsync($"/api/documents/{documentId}");
 
             deleteResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-            // Überprüfen Sie, ob das Dokument wirklich gelöscht wurde
+            // ÃœberprÃ¼fen Sie, ob das Dokument wirklich gelÃ¶scht wurde
             var getResponse = await _client.GetAsync($"/api/documents/{documentId}");
             getResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
         }
@@ -52,3 +52,4 @@ namespace DocumentManagementSystem.IntegrationTests
         }
     }
 }
+

@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.Models
+﻿namespace DocumentManagementSystem.Models
 {
     public sealed class OcrJob
     {
@@ -8,3 +8,4 @@ namespace DocumentManagementSystem.Models
         public DateTime UploadedAt { get; init; } = DateTime.UtcNow;
     }
 }
+

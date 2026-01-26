@@ -1,4 +1,4 @@
-﻿// src/pages/Dashboard.jsx
+// src/pages/Dashboard.jsx
 import React from "react";
 import { Search, Tag, Trash2, Filter, ExternalLink } from "lucide-react";
 

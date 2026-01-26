@@ -10,3 +10,4 @@ public class ExtractedEntity
     public string Type { get; set; } = "";   // PERSON|ORG|LOCATION
     public string Value { get; set; } = "";
 }
+

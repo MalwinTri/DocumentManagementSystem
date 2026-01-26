@@ -18,3 +18,4 @@ public class DocumentMetadata
     // optional: raw json for debugging / flexibility
     public string RawJson { get; set; } = "{}";
 }
+

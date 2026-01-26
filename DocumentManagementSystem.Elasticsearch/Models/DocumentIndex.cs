@@ -9,3 +9,4 @@ public class DocumentIndex
     public List<string> Tags { get; set; } = new();
     public DateTime UploadedAt { get; set; }
 }
+

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text;
 
 namespace DocumentManagementSystem.OCR_Worker.OCR;
@@ -41,3 +41,4 @@ public class CliOcrEngine : IOcrEngine
         return stdout;
     }
 }
+

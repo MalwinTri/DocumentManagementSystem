@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.AccessBatch.Options;
+﻿namespace DocumentManagementSystem.AccessBatch.Options;
 
 public sealed class AccessBatchOptions
 {
@@ -9,6 +9,7 @@ public sealed class AccessBatchOptions
     public int RunHour { get; set; } = 1;
     public int RunMinute { get; set; } = 0;
 
-    // fürs Testen extrem praktisch (einmal sofort laufen)
+    // fÃ¼rs Testen extrem praktisch (einmal sofort laufen)
     public bool RunOnStart { get; set; } = true;
 }
+

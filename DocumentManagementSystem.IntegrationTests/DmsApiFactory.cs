@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Hosting;
+﻿using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 public sealed class DmsApiFactory : WebApplicationFactory<Program>
@@ -7,7 +7,7 @@ public sealed class DmsApiFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Testing");
 
-        // Wichtig: Host+Port müssen zum docker ps passen (bei dir 5433)
+        // Wichtig: Host+Port mÃ¼ssen zum docker ps passen (bei dir 5433)
         Environment.SetEnvironmentVariable("ConnectionStrings__Default",
             "Host=localhost;Port=5433;Database=dms;Username=postgres;Password=postgres");
 
@@ -26,3 +26,4 @@ public sealed class DmsApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("RABBIT_QUEUE", "ocr-queue");
     }
 }
+

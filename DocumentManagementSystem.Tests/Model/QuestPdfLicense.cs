@@ -1,4 +1,4 @@
-using QuestPDF.Infrastructure;
+﻿using QuestPDF.Infrastructure;
 using System.Runtime.CompilerServices;
 
 public static class QuestPdfLicense
@@ -9,3 +9,4 @@ public static class QuestPdfLicense
         QuestPDF.Settings.License = LicenseType.Community;
     }
 }
+

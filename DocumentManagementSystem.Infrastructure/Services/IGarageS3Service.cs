@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.Infrastructure.Services
+﻿namespace DocumentManagementSystem.Infrastructure.Services
 {
     public interface IGarageS3Service
     {
@@ -6,3 +6,4 @@ namespace DocumentManagementSystem.Infrastructure.Services
         Task<Stream> GetPdfAsync(string key, CancellationToken ct = default);
     }
 }
+
