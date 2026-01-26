@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http.Headers;
@@ -27,12 +27,12 @@ namespace DocumentManagementSystem.IntegrationTests
                 await CreateTestDocument()
             };
 
-            // Führen Sie die Bulk-Löschoperation aus
+            // FÃ¼hren Sie die Bulk-LÃ¶schoperation aus
             var response = await _client.PostAsJsonAsync("/api/documents/bulk-delete", documentIds);
 
             response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-            // Überprüfen Sie, ob alle Dokumente gelöscht wurden
+            // ÃœberprÃ¼fen Sie, ob alle Dokumente gelÃ¶scht wurden
             foreach (var docId in documentIds)
             {
                 var getResponse = await _client.GetAsync($"/api/documents/{docId}");
@@ -61,3 +61,4 @@ namespace DocumentManagementSystem.IntegrationTests
         }
     }
 }
+

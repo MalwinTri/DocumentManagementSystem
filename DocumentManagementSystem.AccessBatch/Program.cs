@@ -1,4 +1,4 @@
-using DocumentManagementSystem.AccessBatch.Options;
+﻿using DocumentManagementSystem.AccessBatch.Options;
 using DocumentManagementSystem.AccessBatch.Worker;
 using DocumentManagementSystem.Database;
 using Microsoft.EntityFrameworkCore;
@@ -54,3 +54,4 @@ internal class Program
         }
     }
 }
+

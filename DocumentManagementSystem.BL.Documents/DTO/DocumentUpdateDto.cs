@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.Dto;
+﻿namespace DocumentManagementSystem.Dto;
 
 public sealed class DocumentUpdateDto
 {
@@ -7,3 +7,4 @@ public sealed class DocumentUpdateDto
     public List<string>? Tags { get; set; }
     public string? Summary { get; set; }
 }
+

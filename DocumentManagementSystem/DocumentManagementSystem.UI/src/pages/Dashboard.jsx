@@ -1,4 +1,4 @@
-﻿// src/pages/Dashboard.jsx
+// src/pages/Dashboard.jsx
 import React from "react";
 import { Search, Tag, Trash2, Filter, ExternalLink } from "lucide-react";
 
@@ -744,7 +744,6 @@ export default function Dashboard() {
     const [showAllTags, setShowAllTags] = React.useState(false);
 
     const [openItem, setOpenItem] = React.useState(null);
-    const [query, setQuery] = React.useState("");
 
     // Polling state
     const pollTimersRef = React.useRef(new Map()); // id -> intervalId

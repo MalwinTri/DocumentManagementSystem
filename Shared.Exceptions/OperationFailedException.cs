@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.Exceptions;
+﻿namespace DocumentManagementSystem.Exceptions;
 
 public sealed class OperationFailedException : AppException
 {
@@ -10,3 +10,4 @@ public sealed class OperationFailedException : AppException
         : base(message, code, detail, inner)
     { }
 }
+

@@ -1,4 +1,4 @@
-using DocumentManagementSystem.AccessBatch.Options;
+﻿using DocumentManagementSystem.AccessBatch.Options;
 using DocumentManagementSystem.AccessBatch.Services;
 using DocumentManagementSystem.Database;
 using Microsoft.EntityFrameworkCore;
@@ -30,7 +30,7 @@ public sealed class AccessBatchWorker : BackgroundService
         _logger.LogInformation("AccessBatchWorker started. Input={Input} Pattern={Pattern} Archive={Archive} RunOnStart={RunOnStart}",
             _opt.InputFolder, _opt.FilePattern, _opt.ArchiveFolder, _opt.RunOnStart);
 
-        // 1) Optional: einmal sofort laufen (für Demo/Testing)
+        // 1) Optional: einmal sofort laufen (fÃ¼r Demo/Testing)
         if (_opt.RunOnStart && !stoppingToken.IsCancellationRequested)
         {
             try
@@ -124,3 +124,4 @@ public sealed class AccessBatchWorker : BackgroundService
         return next - now;
     }
 }
+

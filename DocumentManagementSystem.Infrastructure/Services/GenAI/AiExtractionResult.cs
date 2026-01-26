@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace DocumentManagementSystem.Infrastructure.Services.GenAI
 {
@@ -27,8 +27,7 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
 
         [JsonPropertyName("keywords")]
         public List<string> Keywords { get; set; } = new();
-
-        // optional: raw JSON zum Debuggen in DB speichern
         public string RawJson { get; set; } = "{}";
     }
 }
+

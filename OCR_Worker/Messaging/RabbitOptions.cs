@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.OCR_Worker.Messaging;
+﻿namespace DocumentManagementSystem.OCR_Worker.Messaging;
 
 public sealed class RabbitOptions
 {
@@ -9,3 +9,4 @@ public sealed class RabbitOptions
     public ushort Prefetch { get; set; } = 1;
     public bool RequeueOnError { get; set; } = false;
 }
+

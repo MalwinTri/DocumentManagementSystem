@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using ImageMagick;
 using Tesseract;
 
@@ -24,7 +24,7 @@ public sealed class OcrEngine : IOcrEngine
         var settings = new MagickReadSettings { Density = new Density(300, 300) };
 
         using var pages = new MagickImageCollection();
-        pages.Read(pdf, settings);  // benötigt Ghostscript zur Laufzeit
+        pages.Read(pdf, settings);  // benÃ¶tigt Ghostscript zur Laufzeit
 
         var tessdata = Environment.GetEnvironmentVariable("TESSDATA_PREFIX")
             ?? new[] {
@@ -53,3 +53,4 @@ public sealed class OcrEngine : IOcrEngine
     }
 
 }
+

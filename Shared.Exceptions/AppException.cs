@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.Exceptions;
+﻿namespace DocumentManagementSystem.Exceptions;
 
 public abstract class AppException : Exception
 {
@@ -15,3 +15,4 @@ public abstract class AppException : Exception
     public override string ToString()
         => $"{GetType().Name}: {Message} (code={Code ?? "n/a"}){Environment.NewLine}{base.ToString()}";
 }
+

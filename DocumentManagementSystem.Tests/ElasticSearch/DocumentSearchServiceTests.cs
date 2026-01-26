@@ -1,4 +1,4 @@
-using DocumentManagementSystem.Elasticsearch.Models;
+﻿using DocumentManagementSystem.Elasticsearch.Models;
 using DocumentManagementSystem.Elasticsearch.Services;
 using Elastic.Clients.Elasticsearch;
 using Elastic.Transport;
@@ -66,3 +66,4 @@ public class DocumentSearchServiceTests
         client.VerifyAll();
     }
 }
+

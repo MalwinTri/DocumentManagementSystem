@@ -1,4 +1,4 @@
-namespace DocumentManagementSystem.Dto;
+﻿namespace DocumentManagementSystem.Dto;
 
 public record ExtractedEntityDto(string Type, string Value);
 
@@ -27,3 +27,4 @@ public record DocumentResponseDto(
     List<ExtractedEntityDto> Entities,
     DocumentEmbeddingDto? Embedding
 );
+

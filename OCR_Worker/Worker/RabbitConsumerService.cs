@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using DocumentManagementSystem.Models;
 using DocumentManagementSystem.OCR_Worker.Messaging;
@@ -71,3 +71,4 @@ public class RabbitConsumerService : BackgroundService
         base.Dispose();
     }
 }
+

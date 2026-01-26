@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "documentmanagementsystem-ui",
   "private": true,
   "version": "0.0.0",
@@ -44,3 +44,4 @@
     "vite": "^7.1.7"
   }
 }
+

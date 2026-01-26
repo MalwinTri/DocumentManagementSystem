@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 
 namespace DocumentManagementSystem.AccessBatch.Services;
 
@@ -32,3 +32,4 @@ public static class AccessXmlParser
         return list;
     }
 }
+

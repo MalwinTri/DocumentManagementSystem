@@ -1,4 +1,4 @@
-using DocumentManagementSystem.Models;
+﻿using DocumentManagementSystem.Models;
 using DocumentManagementSystem.Dto;
 
 namespace DocumentManagementSystem.Mapping;
@@ -31,3 +31,4 @@ public static class DocumentMapper
                 : new DocumentEmbeddingDto(d.Embedding.Model, d.Embedding.Dims)
         );
 }
+

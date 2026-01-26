@@ -1,4 +1,4 @@
-using DocumentManagementSystem.Models;
+﻿using DocumentManagementSystem.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocumentManagementSystem.Database;
@@ -78,8 +78,9 @@ public class DmsDbContext(DbContextOptions<DmsDbContext> options) : DbContext(op
              .HasForeignKey(x => x.DocumentId)
              .OnDelete(DeleteBehavior.Cascade);
 
-            // optional, wenn du oft nach Datum über alle Docs filterst:
+            // optional, wenn du oft nach Datum Ã¼ber alle Docs filterst:
             e.HasIndex(x => x.Day);
         });
     }
 }
+

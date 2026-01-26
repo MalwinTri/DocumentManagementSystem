@@ -121,3 +121,4 @@ namespace DocumentManagementSystem.Infrastructure.Services.GenAI
         public List<float> Values { get; set; } = new();
     }
 }
+

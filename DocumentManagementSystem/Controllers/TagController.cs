@@ -1,4 +1,4 @@
-using DocumentManagementSystem.DAL;
+﻿using DocumentManagementSystem.DAL;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DocumentManagementSystem.Controllers;
@@ -21,3 +21,4 @@ public sealed class TagsController : ControllerBase
         return Ok(items);
     }
 }
+

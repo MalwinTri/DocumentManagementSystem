@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using FluentAssertions;
 using Xunit;
 
@@ -36,3 +36,4 @@ namespace DocumentManagementSystem.IntegrationTests
         }
     }
 }
+

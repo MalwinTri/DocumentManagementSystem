@@ -1,4 +1,4 @@
-using DocumentManagementSystem.Exceptions;
+﻿using DocumentManagementSystem.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -159,3 +159,4 @@ public sealed class ErrorHandlingMiddleware
         return pd;
     }
 }
+
